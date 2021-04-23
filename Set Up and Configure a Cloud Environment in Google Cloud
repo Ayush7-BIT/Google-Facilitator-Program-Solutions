@@ -1,0 +1,32 @@
+FIRST, SECOND, THIRD, FOURTH TASKS ARE ALREADY COMPLETED IN THE VIDEO
+
+FIFTH TASK -
+
+gcloud container clusters create griffin-dev \
+  --network griffin-dev-vpc \
+  --subnetwork griffin-dev-wp \
+  --machine-type n1-standard-4 \
+  --num-nodes 2  \
+  --zone us-east1-b
+  
+  SIXTH TASK - 
+  
+  gsutil cp -r gs://cloud-training/gsp321/wp-k8s .
+
+cd wp-k8s
+
+sed -i s/username_goes_here/wp_user/g wp-env.yaml
+
+sed -i s/password_goes_here/stormwind_rules/g wp-env.yaml
+
+kubectl apply -f wp-env.yaml
+
+SEVENTH TASK -
+
+nano wp-deployment.yaml
+
+kubectl create -f wp-deployment.yaml
+
+kubectl create -f wp-service.yaml
+
+8TH AND 9TH TASK ARE DONE MANUALLY
