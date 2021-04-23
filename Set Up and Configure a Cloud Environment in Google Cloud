@@ -21,6 +21,8 @@ sed -i s/password_goes_here/stormwind_rules/g wp-env.yaml
 
 kubectl apply -f wp-env.yaml
 
+AFTER THIS 2 SERVICE ACCOUNT COMMAND FROM LAB DESCRIPTION
+
 SEVENTH TASK -
 
 nano wp-deployment.yaml
