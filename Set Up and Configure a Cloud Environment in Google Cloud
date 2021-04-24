@@ -13,22 +13,22 @@ gcloud container clusters create griffin-dev \
   
   gsutil cp -r gs://cloud-training/gsp321/wp-k8s .
 
-cd wp-k8s
+  cd wp-k8s
 
-sed -i s/username_goes_here/wp_user/g wp-env.yaml
+  sed -i s/username_goes_here/wp_user/g wp-env.yaml
 
-sed -i s/password_goes_here/stormwind_rules/g wp-env.yaml
+  sed -i s/password_goes_here/stormwind_rules/g wp-env.yaml
 
-kubectl apply -f wp-env.yaml
+  kubectl apply -f wp-env.yaml
 
-AFTER THIS 2 SERVICE ACCOUNT COMMAND FROM LAB DESCRIPTION
+  AFTER THIS 2 SERVICE ACCOUNT COMMAND FROM LAB DESCRIPTION
 
-SEVENTH TASK -
+  SEVENTH TASK -
 
-nano wp-deployment.yaml
+  nano wp-deployment.yaml
 
-kubectl create -f wp-deployment.yaml
+  kubectl create -f wp-deployment.yaml
 
-kubectl create -f wp-service.yaml
+  kubectl create -f wp-service.yaml
 
-8TH AND 9TH TASK ARE DONE MANUALLY
+  8TH AND 9TH TASK ARE DONE MANUALLY
