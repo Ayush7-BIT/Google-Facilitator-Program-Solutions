@@ -8,8 +8,6 @@ gcloud container clusters get-credentials jenkins-cd
 
 kubectl create clusterrolebinding cluster-admin-binding --clusterrole=cluster-admin --user=$(gcloud config get-value account)
 
-helm repo add stable https://kubernetes-charts.storage.googleapis.com/  → this might not work… use the next line of code instead…
-
 helm repo add stable https://charts.helm.sh/stable
 
 helm repo update
