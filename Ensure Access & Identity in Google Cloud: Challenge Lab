@@ -22,7 +22,6 @@ includedPermissions:
 - storage.objects.create
 
 gcloud iam roles create orca_storage_update --project $DEVSHELL_PROJECT_ID \
-
 --file role-definition.yaml
 
 
