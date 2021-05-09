@@ -1,0 +1,48 @@
+Just run these commands IN SEQUENCE ----------
+
+1ST TASK --------------
+
+
+export ZONE=us-central1-a
+
+gcloud sql instances create wordpress --tier=db-n1-standard-1 --activation-policy=ALWAYS --gce-zone $ZONE
+
+2ND TASK ---------------
+
+gcloud sql users set-password --host % root --instance wordpress --password Password1*
+
+export ADDRESS= EXTERNALIP of BLOG VIRTUAL MACHINE/32 - CIDR FORM
+
+gcloud sql instances patch wordpress --authorized-networks $ADDRESS --quiet
+
+gcloud compute ssh blog --zone=us-central1-a
+
+MYSQLIP=$(gcloud sql instances describe wordpress --format="value(ipAddresses.ipAddress)")
+
+mysql --host=[SQL INSTANCE PRIMARY ADDRESS] \
+    --user=root --password
+  
+CREATE DATABASE wordpress;
+CREATE USER 'blogadmin'@'%' IDENTIFIED BY 'Password1*';
+GRANT ALL PRIVILEGES ON wordpress.* TO 'blogadmin'@'%';
+FLUSH PRIVILEGES;
+
+exit
+
+3RD TASK -----------------
+
+
+sudo mysqldump -u root -pPassword1* wordpress > wordpress_backup.sql
+
+
+mysql --host=$MYSQLIP --user=root -pPassword1* --verbose wordpress < wordpress_backup.sql
+
+
+sudo service apache2 restart
+
+4RTH TASK ----------------
+
+cd /var/www/html/wordpress
+
+
+sudo nano wp-config.php
