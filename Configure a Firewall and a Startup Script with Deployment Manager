@@ -50,20 +50,6 @@ resources:
     
     
     
-Paste this in qwiklabs.yaml file,exactly as I did -
-
-
-imports:
-- path: qwiklabs.jinja
-
-resources:
-- name: qwiklabs
-  type: qwiklabs.jinja
-  properties:
-    zone: us-central1-a
-    
-    
-    
 Last Command - 
 
 
