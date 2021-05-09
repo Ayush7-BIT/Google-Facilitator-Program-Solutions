@@ -1,6 +1,6 @@
 Firstly clone this repository and unzip it - 
 
-gsutil cp gs://$DEVSHELL_PROJECT_ID/echo-web.tar.gz .
+gsutil cp gs://sureskills-ql/challenge-labs/ch04-kubernetes-app-deployment/echo-web.tar.gz .
 
 tar -xvf echo-web.tar.gz
 
