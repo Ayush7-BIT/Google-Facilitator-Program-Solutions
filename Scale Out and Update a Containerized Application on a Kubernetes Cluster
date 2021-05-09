@@ -1,0 +1,20 @@
+After running those commands, which I did In video, run these - 
+
+gsutil cp gs://sureskills-ql/challenge-labs/ch05-k8s-scale-and-update/echo-web-v2.tar.gz .
+
+tar xvzf echo-web-v2.tar.gz
+
+1st TASK -----------
+
+gcloud builds submit --tag gcr.io/$DEVSHELL_PROJECT_ID/echo-app:v2 .
+
+4TH TASK ------------
+
+kubectl edit deploy echo-web
+
+// Change image version 'v1' to 'v2' 
+
+3RD TASK ------------
+
+kubectl scale deploy echo-web --replicas=2
+
