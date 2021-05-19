@@ -35,8 +35,9 @@ kubectl expose deployment orders --type=LoadBalancer --port 80 --target-port 808
 kubectl create deployment products --image=gcr.io/${GOOGLE_CLOUD_PROJECT}/products:1.0.0
 kubectl expose deployment products --type=LoadBalancer --port 80 --target-port 8082
 
-kubectl get service products
 kubectl get service orders
+
+kubectl get service products
 
 TASK 5 ----------------------
 
