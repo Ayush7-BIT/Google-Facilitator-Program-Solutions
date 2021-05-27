@@ -1,0 +1,13 @@
+1ST TASK ----------------
+
+gsutil cp gs://cloud-training/gsp323/lab.csv .
+
+cat lab.csv
+
+gsutil cp gs://cloud-training/gsp323/lab.schema .
+
+cat lab.schema
+
+TASK 4 -------------------
+
+gsutil cp result.json gs://YOUR_PROJECT-marking/task4-cnl.result
