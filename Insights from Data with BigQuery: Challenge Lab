@@ -285,6 +285,7 @@ select first_day_cases, last_day_cases, days_diff, POW((last_day_cases/first_day
 from summary
 
 
+
 10TH TASK -----------------------------------------------------------------------------------------------------------------
 
 SELECT
