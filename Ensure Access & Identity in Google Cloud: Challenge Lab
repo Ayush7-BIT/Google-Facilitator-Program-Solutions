@@ -25,8 +25,14 @@ gcloud container clusters create orca-test-cluster --num-nodes 1 --master-ipv4-c
 5th Task ---------- Deploy an application to a private Kubernetes Engine cluster
 
 gcloud container clusters get-credentials orca-test-cluster --internal-ip --zone us-east1-b --project <Project ID>
+-----------------------------------------------------------
 
-
+16jan 2022
+--------------
 4th task---- Please check cluster name, configuration and subnet always
 
 gcloud container clusters create orca-cluster-454 --num-nodes 1 --master-ipv4-cidr=172.16.0.64/28 --network orca-build-vpc --subnetwork orca-build-subnet --enable-master-authorized-networks  --master-authorized-networks 192.168.10.2/32 --enable-ip-alias --enable-private-nodes --enable-private-endpoint --service-account orca-private-cluster-478-sa@qwiklabs-gcp-01-590242d182e1.iam.gserviceaccount.com --zone us-east1-b
+
+5th task-----   Please check cluster name always
+
+gcloud container clusters get-credentials orca-cluster-454 --internal-ip --zone us-east1-b --project qwiklabs-gcp-01-590242d182e1
