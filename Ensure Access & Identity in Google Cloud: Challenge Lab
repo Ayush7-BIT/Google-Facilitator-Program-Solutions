@@ -13,15 +13,15 @@ includedPermissions:
 - storage.objects.update
 - storage.objects.create
 
-gcloud iam roles create orca_storage_update --project $DEVSHELL_PROJECT_ID \
+gcloud iam roles create orca_storage_manager_617 --project $DEVSHELL_PROJECT_ID \
 --file role-definition.yaml
 
 
 4TH TASK ----------  Create and configure a new Kubernetes Engine private cluster
 
 
-gcloud container clusters create orca-test-cluster --num-nodes 1 --master-ipv4-cidr=172.16.0.64/28 --network orca-build-vpc --subnetwork orca-build-subnet --enable-master-authorized-networks  --master-authorized-networks 192.168.10.2/32 --enable-ip-alias --enable-private-nodes --enable-private-endpoint --service-account orca-private-cluster-sa@<Project ID>.iam.gserviceaccount.com --zone us-east1-b
+gcloud container clusters create orca-cluster-597 --num-nodes 1 --master-ipv4-cidr=172.16.0.64/28 --network orca-build-vpc --subnetwork orca-build-subnet --enable-master-authorized-networks  --master-authorized-networks 192.168.10.2/32 --enable-ip-alias --enable-private-nodes --enable-private-endpoint --service-account orca-private-cluster-175-sa@<Project ID>.iam.gserviceaccount.com --zone us-east1-b
 
 5th Task ---------- Deploy an application to a private Kubernetes Engine cluster
 
-gcloud container clusters get-credentials orca-test-cluster --internal-ip --zone us-east1-b --project <Project ID>
+gcloud container clusters get-credentials orca-cluster-597 --internal-ip --zone us-east1-b --project <Project ID>
