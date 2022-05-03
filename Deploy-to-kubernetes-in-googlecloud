@@ -1,54 +1,43 @@
 First Task -
 
-gsutil cat gs://cloud-training/gsp318/marking/setup_marking.sh | bash
-gcloud source repos clone valkyrie-app
+source <(gsutil cat gs://cloud-training/gsp318/marking/setup_marking_v2.sh)
+gcloud source repos clone valkyrie-app --project=qwiklabs-gcp-01-096d3d9fe9fc [Your Project Id]
 cd valkyrie-app
 cat > Dockerfile <<EOF
-FROM golang:1.10
-WORKDIR /go/src/app
-COPY source .
-RUN go install -v
-ENTRYPOINT ["app","-single=true","-port=8080"]
-EOF
-docker build -t valkyrie-app:v0.0.1 .
+docker build -t valkyrie-dev:v0.0.3 . [AS PER YOUR NAME AND NUMBER]
 cd ..
-cd marking
-./step1.sh
+./step1_v2.sh
 
-Second Task -
 
-cd ..
-cd valkyrie-app
-docker run -p 8080:8080 valkyrie-app:v0.0.1 &
+docker run -p 8080:8080 valkyrie-dev:v0.0.3 & [change name and number as per your lab names]
+./step2_v2.sh
 
-cd ..
-cd marking
-./step2.sh
 
-Third Task -
+docker tag valkyrie-dev:v0.0.3 gcr.io/qwiklabs-gcp-01-096d3d9fe9fc/valkyrie-dev:v0.0.3
+docker push gcr.io/qwiklabs-gcp-01-096d3d9fe9fc/valkyrie-dev:v0.0.3
 
-cd ..
-cd valkyrie-app
-docker tag valkyrie-app:v0.0.1 gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-app:v0.0.1
-
-docker push gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-app:v0.0.1
-sed -i s#IMAGE_HERE#gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-app:v0.0.1#g k8s/deployment.yaml
-
-Fourth Task -
-
-sed -i s#IMAGE_HERE#gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-app:v0.0.1#g k8s/deployment.yaml
 gcloud container clusters get-credentials valkyrie-dev --zone us-east1-d
+cd valkyrie-app
+sed -i s#IMAGE_HERE#gcr.io/qwiklabs-gcp-01-096d3d9fe9fc/valkyrie-dev:v0.0.3#g k8s/deployment.yaml [copy the middle one from there]
 kubectl create -f k8s/deployment.yaml
 kubectl create -f k8s/service.yaml
+
+
+
+
+
+
 
 Fifth Task -
 
 git merge origin/kurt-dev
 kubectl edit deployment valkyrie-dev
 
-docker build -t gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-app:v0.0.2 . 
-docker push gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-app:v0.0.2
+docker build -t gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-dev:v0.0.4 . 
+docker push gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-dev:v0.0.4
 kubectl edit deployment valkyrie-dev
+
+
 
 Sixth and Final Task -
 
