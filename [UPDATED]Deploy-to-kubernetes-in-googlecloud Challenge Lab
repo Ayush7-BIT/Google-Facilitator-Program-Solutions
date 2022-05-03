@@ -9,12 +9,17 @@ cd ..
 ./step1_v2.sh
 
 
+2nd Task
+
 docker run -p 8080:8080 valkyrie-dev:v0.0.3 & [change name and number as per your lab names]
 ./step2_v2.sh
 
+Task -- 3
 
 docker tag valkyrie-dev:v0.0.3 gcr.io/qwiklabs-gcp-01-096d3d9fe9fc/valkyrie-dev:v0.0.3
 docker push gcr.io/qwiklabs-gcp-01-096d3d9fe9fc/valkyrie-dev:v0.0.3
+
+Task 4 -----
 
 gcloud container clusters get-credentials valkyrie-dev --zone us-east1-d
 cd valkyrie-app
@@ -23,12 +28,8 @@ kubectl create -f k8s/deployment.yaml
 kubectl create -f k8s/service.yaml
 
 
+TASK 5 -----
 
-
-
-
-
-Fifth Task -
 
 git merge origin/kurt-dev
 kubectl edit deployment valkyrie-dev
@@ -57,4 +58,3 @@ git config --global user.name "student"
 git add .
 git commit -m "built pipeline init"
 git push 
-
