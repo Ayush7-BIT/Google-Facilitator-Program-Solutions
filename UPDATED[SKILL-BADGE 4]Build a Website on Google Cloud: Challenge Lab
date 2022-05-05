@@ -1,0 +1,80 @@
+Make Environment Variables for names which are not Permanent so that we don't need to make changes again n again!
+
+export MONOLITH_IDENTIFIER=
+export CLUSTER_NAME=
+export ORDERS_IDENTIFIER=
+export PRODUCTS_IDENTIFIER=
+export FRONTEND_IDENTIFIER=
+
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable container.googleapis.com
+
+TASK 1 --------------------------------------------
+
+git clone https://github.com/googlecodelabs/monolith-to-microservices.git
+
+cd ~/monolith-to-microservices
+./setup.sh
+
+cd ~/monolith-to-microservices/monolith
+gcloud builds submit --tag gcr.io/${GOOGLE_CLOUD_PROJECT}/${MONOLITH_IDENTIFIER}:1.0.0 .
+
+
+TASK 2 ----------------------------------------------
+
+gcloud config set compute/zone us-central1-a
+
+gcloud container clusters create $CLUSTER_NAME --num-nodes 3
+
+gcloud container clusters get-credentials $CLUSTER_NAME
+
+kubectl create deployment $MONOLITH_IDENTIFIER --image=gcr.io/${GOOGLE_CLOUD_PROJECT}/${MONOLITH_IDENTIFIER}:1.0.0
+kubectl expose deployment $MONOLITH_IDENTIFIER --type=LoadBalancer --port 80 --target-port 8080
+
+kubectl get svc -w
+
+
+TASK 3 -----------------------------------------------
+
+cd ~/monolith-to-microservices/microservices/src/orders
+gcloud builds submit --tag gcr.io/${GOOGLE_CLOUD_PROJECT}/${ORDERS_IDENTIFIER}:1.0.0 .
+
+cd ~/monolith-to-microservices/microservices/src/products
+gcloud builds submit --tag gcr.io/${GOOGLE_CLOUD_PROJECT}/${PRODUCTS_IDENTIFIER}:1.0.0 .
+
+TASK 4 ------------------------------------------------
+
+kubectl create deployment $ORDERS_IDENTIFIER --image=gcr.io/${GOOGLE_CLOUD_PROJECT}/${ORDERS_IDENTIFIER}:1.0.0
+kubectl expose deployment $ORDERS_IDENTIFIER --type=LoadBalancer --port 80 --target-port 8081
+
+kubectl get svc -w
+
+kubectl create deployment $PRODUCTS_IDENTIFIER --image=gcr.io/${GOOGLE_CLOUD_PROJECT}/${PRODUCTS_IDENTIFIER}:1.0.0
+kubectl expose deployment $PRODUCTS_IDENTIFIER --type=LoadBalancer --port 80 --target-port 8082
+
+kubectl get svc -w
+
+TASK 5 ------------------------------------------------
+
+export ORDERS_SERVICE_IP=$(kubectl get services -o jsonpath="{.items[1].status.loadBalancer.ingress[0].ip}")
+export PRODUCTS_SERVICE_IP=$(kubectl get services -o jsonpath="{.items[2].status.loadBalancer.ingress[0].ip}")
+
+cd ~/monolith-to-microservices/react-app
+sed -i "s/localhost:8081/$ORDERS_SERVICE_IP/g" .env
+sed -i "s/localhost:8082/$PRODUCTS_SERVICE_IP/g" .env
+npm run build
+
+TASK 6 ---------------------------------------------------
+
+cd ~/monolith-to-microservices/microservices/src/frontend
+gcloud builds submit --tag gcr.io/${GOOGLE_CLOUD_PROJECT}/${FRONTEND_IDENTIFIER}:1.0.0 .
+
+TASK 7 ---------------------------------------------------
+
+kubectl create deployment $FRONTEND_IDENTIFIER --image=gcr.io/${GOOGLE_CLOUD_PROJECT}/${FRONTEND_IDENTIFIER}:1.0.0
+kubectl expose deployment $FRONTEND_IDENTIFIER --type=LoadBalancer --port 80 --target-port 8080
+
+kubectl get svc -w
+
+
+                                               You Are Doing Great!!
