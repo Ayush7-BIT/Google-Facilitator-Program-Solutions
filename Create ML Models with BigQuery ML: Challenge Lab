@@ -15,6 +15,7 @@ SELECT
     EXTRACT(HOUR FROM start_time) AS start_hour,
     EXTRACT(DAYOFWEEK FROM start_time) AS day_of_week,
     duration_minutes,
+    address as location
 FROM
     `bigquery-public-data.austin_bikeshare.bikeshare_trips` AS trips
 JOIN
@@ -22,16 +23,8 @@ JOIN
 ON
     trips.start_station_name = stations.name
 WHERE
-    EXTRACT(YEAR FROM start_time) = 2018
+    EXTRACT(YEAR FROM start_time) = <replace year>
     AND duration_minutes > 0
-    
-    
-AFTER THIS TRY THESE IN CLOUD SHELL ----------------------------------
-
-export PROJECT_ID=[REPLACE WITH GCP_PROJECT_ID]
-
-bq query --use_legacy_sql=false "CREATE OR REPLACE MODEL austin.austin_1 OPTIONS(input_label_cols=['duration_minutes'], model_type='linear_reg') AS SELECT duration_minutes, location, start_station_name, CAST(EXTRACT(dayofweek FROM start_time) AS STRING) as dayofweek, CAST(EXTRACT(hour FROM start_time) AS STRING) AS hourofday, FROM \`bigquery-public-data.austin_bikeshare.bikeshare_trips\` AS trips JOIN \`bigquery-public-data.austin_bikeshare.bikeshare_stations\` AS stations ON trips.start_station_id = stations.station_id WHERE EXTRACT(year from start_time) = 2018"
-
 
 
 3RD TASK ----------------------------------------------------------------------------------------------------
@@ -46,7 +39,23 @@ SELECT
     subscriber_type,
     duration_minutes
 FROM `bigquery-public-data.austin_bikeshare.bikeshare_trips` AS trips
-WHERE EXTRACT(YEAR FROM start_time) = 2018
+WHERE EXTRACT(YEAR FROM start_time) = <replace year>
+
+
+
+
+2ND QUERY  -----------------------------------------------------------------------
+
+CREATE OR REPLACE MODEL austin.subscriber_model
+OPTIONS
+  (model_type='linear_reg', labels=['duration_minutes']) AS
+SELECT
+    start_station_name,
+    EXTRACT(HOUR FROM start_time) AS start_hour,
+    subscriber_type,
+    duration_minutes
+FROM `bigquery-public-data.austin_bikeshare.bikeshare_trips` AS trips
+WHERE EXTRACT(YEAR FROM start_time) = <replace year>
 
 
 4RTH TASK ----------------------------------------------------------------------------------------------------
@@ -64,15 +73,17 @@ FROM
     start_station_name,
     EXTRACT(HOUR FROM start_time) AS start_hour,
     EXTRACT(DAYOFWEEK FROM start_time) AS day_of_week,
-    duration_minutes
+    duration_minutes,
+    address as location
   FROM
     `bigquery-public-data.austin_bikeshare.bikeshare_trips` AS trips
   JOIN
    `bigquery-public-data.austin_bikeshare.bikeshare_stations` AS stations
   ON
     trips.start_station_name = stations.name
-  WHERE EXTRACT(YEAR FROM start_time) = 2019)
+  WHERE EXTRACT(YEAR FROM start_time) = <replace year> )
 )
+
 
 
 2ND MODEL --------------------------
@@ -92,14 +103,14 @@ FROM
   FROM
     `bigquery-public-data.austin_bikeshare.bikeshare_trips` AS trips
   WHERE
-    EXTRACT(YEAR FROM start_time) = 2019)
+    EXTRACT(YEAR FROM start_time) = <replace year>)
 )
+
 
 
 5TH TASK  -------------------------------------------------------------------------------------------------------
 
 1ST ONE  ---------------------------
-
 
 SELECT
   start_station_name,
@@ -107,11 +118,13 @@ SELECT
 FROM
   `bigquery-public-data.austin_bikeshare.bikeshare_trips`
 WHERE
-  EXTRACT(YEAR FROM start_time) = 2019
+  EXTRACT(YEAR FROM start_time) = <replace year>
 GROUP BY
   start_station_name
 ORDER BY
   trips DESC
+
+
 
 2ND ONE -----------------------------
 
@@ -124,11 +137,11 @@ SELECT
     duration_minutes
 FROM
   `bigquery-public-data.austin_bikeshare.bikeshare_trips`
-WHERE
-  EXTRACT(YEAR FROM start_time) = 2019
+WHERE 
+  EXTRACT(YEAR FROM start_time) = <replace year>
   AND subscriber_type = 'Single Trip'
   AND start_station_name = '21st & Speedway @PCL'))
+  
 
 
-
-COMPLETED !!!!!!!!!!!!!
+                                          COMPLETED !!!!!!!!!!!!!
