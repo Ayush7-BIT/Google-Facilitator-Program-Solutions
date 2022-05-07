@@ -1,52 +1,57 @@
 1st TASK ------------------------------------------------------------------------------------------------------------
 
 
-SELECT sum(cumulative_confirmed) as total_cases_worldwide FROM `bigquery-public-data.covid19_open_data.covid19_open_data` where date='2020-04-15'
+SELECT sum(cumulative_confirmed) as total_cases_worldwide
+FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
+WHERE date=<change date eg'020-04-10'>
+
 
 
 2ND TASK ------------------------------------------------------------------------------------------------------------
 
 with deaths_by_states as (
 
-SELECT subregion1_name as state, sum(cumulative_deceased) as death_count
+    SELECT subregion1_name as state, sum(cumulative_deceased) as death_count
 
-FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
+    FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
 
-where country_name="United States of America" and date='2020-04-10' and subregion1_name is NOT NULL
+    where country_name="United States of America" and date=<change date eg'020-04-10'> and subregion1_name is NOT NULL
 
-group by subregion1_name
-
+    group by subregion1_name
 )
 
 select count(*) as count_of_states
 
 from deaths_by_states
 
-where death_count > 100
+where death_count > <change deathcount here>
+
+
 
 3RD TASK -------------------------------------------------------------------------------------------------------------
 
 SELECT * FROM (
 
-SELECT subregion1_name as state, sum(cumulative_confirmed) as total_confirmed_cases
+    SELECT subregion1_name as state, sum(cumulative_confirmed) as total_confirmed_cases
 
-FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
+    FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
 
-WHERE country_code="US" AND date='2020-04-10' AND subregion1_name is NOT NULL
+    WHERE country_code="US" AND date=<change date eg'020-04-10'> AND subregion1_name is NOT NULL
 
-GROUP BY subregion1_name
+    GROUP BY subregion1_name
 
-ORDER BY total_confirmed_cases DESC ) WHERE total_confirmed_cases > 1000
+    ORDER BY total_confirmed_cases DESC
+)
+WHERE total_confirmed_cases > <change deathcount here>
 
 
-4RTH TASK --------------------------------------------------------------------------------------------------------------
-
+4TH TASK ----------------------------------------------------------------------------------------------------------------
 
 SELECT sum(cumulative_confirmed) as total_confirmed_cases, sum(cumulative_deceased) as total_deaths, (sum(cumulative_deceased)/sum(cumulative_confirmed))*100 as case_fatality_ratio
 
 FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
 
-where country_name="Italy" AND date BETWEEN '2020-04-01'and '2020-04-30'
+where country_name="Italy" AND date BETWEEN <change month here '2020-04-01'> and < change month here '2020-04-30'> 
 
 
 5TH TASK ----------------------------------------------------------------------------------------------------------------
@@ -56,15 +61,15 @@ SELECT date
 
 FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
 
-where country_name="Italy" and cumulative_deceased>10000
+where country_name="Italy" and cumulative_deceased> <change the value of death cross>
 
 order by date asc
 
 limit 1
 
 
-6TH TASK -------------------------------------------------------------------------------------------------------------------
 
+6TH TASK -------------------------------------------------------------------------------------------------------------------
 
 WITH india_cases_by_date AS (
 
@@ -82,7 +87,7 @@ WITH india_cases_by_date AS (
 
     country_name ="India"
 
-    AND date between '2020-02-21' and '2020-03-15'
+    AND date between < change the date here'2020-02-21'> and <change the date here'2020-03-15'>
 
   GROUP BY
 
@@ -115,6 +120,7 @@ select count(*)
 from india_previous_day_comparison
 
 where net_new_cases=0
+
 
 
 7TH TASK  --------------------------------------------------------------------------------------------------------------
@@ -173,11 +179,11 @@ select Date, cases as Confirmed_Cases_On_Day, previous_day as Confirmed_Cases_Pr
 
 from us_previous_day_comparison
 
-where percentage_increase > 10
+where percentage_increase > <change percentage value here>
+
 
 
 8TH TASK  -------------------------------------------------------------------------------------------------------------------
-
 
 WITH cases_by_country AS (
 
@@ -252,7 +258,7 @@ WITH
 
     AND date IN ('2020-01-24',
 
-      '2020-05-10')
+      <change the date value here'2020-05-10'>)
 
   GROUP BY
 
@@ -286,6 +292,7 @@ from summary
 
 
 
+
 10TH TASK -----------------------------------------------------------------------------------------------------------------
 
 SELECT
@@ -307,4 +314,9 @@ WHERE
   AND country_name ="United States of America"
 
 GROUP BY date
+ 
+ 
+ 
+ 
+                                    YOU ARE DOING GREAT JOB!! KEEP WORKING !!!
 
