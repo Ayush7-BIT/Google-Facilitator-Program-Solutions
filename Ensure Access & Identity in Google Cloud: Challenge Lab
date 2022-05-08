@@ -1,4 +1,4 @@
-Where like this <Project ID> Project is written it means you need to replace that with your GCP project ID
+Where is written like this <Project ID>, <Custom Security Role>, <Cluster Name>, <Service Account Name>  it means you need to replace these values with the value given in the sidebar of lab session.
 
 
 1st TASK ----------    create a custom role using a YAML file
@@ -13,14 +13,14 @@ includedPermissions:
 - storage.objects.update
 - storage.objects.create
 
-gcloud iam roles create orca_storage_update --project $DEVSHELL_PROJECT_ID \
+gcloud iam roles create <Custom Security Role> --project $DEVSHELL_PROJECT_ID \
 --file role-definition.yaml
 
 
 4TH TASK ----------  Create and configure a new Kubernetes Engine private cluster
 
 
-gcloud container clusters create orca-test-cluster --num-nodes 1 --master-ipv4-cidr=172.16.0.64/28 --network orca-build-vpc --subnetwork orca-build-subnet --enable-master-authorized-networks  --master-authorized-networks 192.168.10.2/32 --enable-ip-alias --enable-private-nodes --enable-private-endpoint --service-account orca-private-cluster-sa@<Project ID>.iam.gserviceaccount.com --zone us-east1-b
+gcloud container clusters create <Cluster Name> --num-nodes 1 --master-ipv4-cidr=172.16.0.64/28 --network orca-build-vpc --subnetwork orca-build-subnet --enable-master-authorized-networks  --master-authorized-networks 192.168.10.2/32 --enable-ip-alias --enable-private-nodes --enable-private-endpoint --service-account <Service Account Name>@<Project ID>.iam.gserviceaccount.com --zone us-east1-b
 
 5th Task ---------- Deploy an application to a private Kubernetes Engine cluster
 
