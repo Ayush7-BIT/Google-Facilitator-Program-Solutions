@@ -1,0 +1,68 @@
+Firstly Let's make environment variables!!
+
+export PUBLIC_BILLING_SERVICE=
+export FRONTEND_STAGING_SERVICE=
+export PRIVATE_BILLING_SERVICE=
+export BILLING_SERVICE_ACCOUNT=
+export BILLING_PROD_SERVICE=
+export FRONTEND_SERVICE_ACCOUNT=
+export FRONTEND_PRODUCTION_SERVICE=
+
+SOME STARTING BASIC COMMANDS FOR THIS LAB ---------------
+
+gcloud config set run/region us-central1
+gcloud config set run/platform managed
+
+git clone https://github.com/rosera/pet-theory.git && cd pet-theory/lab07
+
+
+TASK 1 --------------------------------------------------------
+
+cd ~/pet-theory/lab07/unit-api-billing
+
+gcloud builds submit --tag gcr.io/$DEVSHELL_PROJECT_ID/billing-staging-api:0.1
+gcloud run deploy $PUBLIC_BILLING_SERVICE --image gcr.io/$DEVSHELL_PROJECT_ID/billing-staging-api:0.1
+
+
+TASK 2  --------------------------------------------------------
+
+cd ~/pet-theory/lab07/staging-frontend-billing
+
+gcloud builds submit --tag gcr.io/$DEVSHELL_PROJECT_ID/frontend-staging:0.1
+gcloud run deploy $FRONTEND_STAGING_SERVICE --image gcr.io/$DEVSHELL_PROJECT_ID/frontend-staging:0.1
+
+TASK 3. -------------------------
+
+cd ~/pet-theory/lab07/staging-api-billing
+
+gcloud builds submit --tag gcr.io/$DEVSHELL_PROJECT_ID/billing-staging-api:0.2
+gcloud run deploy $PRIVATE_BILLING_SERVICE --image gcr.io/$DEVSHELL_PROJECT_ID/billing-staging-api:0.2
+
+TASK 4 ----------------------------------
+
+gcloud iam service-accounts create $BILLING_SERVICE_ACCOUNT --display-name "Billing Service Account Cloud Run"
+
+TASK 5 ---------------------------------
+
+
+cd ~/pet-theory/lab07/prod-api-billing
+
+gcloud builds submit --tag gcr.io/$DEVSHELL_PROJECT_ID/billing-prod-api:0.1
+gcloud run deploy $BILLING_PROD_SERVICE --image gcr.io/$DEVSHELL_PROJECT_ID/billing-prod-api:0.1
+
+TASK 6 --------------------------------
+
+gcloud iam service-accounts create $FRONTEND_SERVICE_ACCOUNT --display-name "Billing Service Account Cloud Run Invoker"
+
+TASK 7 -------------------------------------
+
+cd ~/pet-theory/lab07/prod-frontend-billing
+
+gcloud builds submit --tag gcr.io/$DEVSHELL_PROJECT_ID/frontend-prod:0.1
+gcloud run deploy $FRONTEND_PRODUCTION_SERVICE --image gcr.io/$DEVSHELL_PROJECT_ID/frontend-prod:0.1
+
+
+
+                     YOU ARE DOING GREAT JOB!!
+                     
+                     
