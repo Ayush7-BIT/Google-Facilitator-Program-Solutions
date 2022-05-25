@@ -86,7 +86,7 @@ sed -i "s/YOUR_SQL_INSTANCE/griffin-dev-db/g" wp-deployment.yaml
 kubectl create -f wp-deployment.yaml
 kubectl create -f wp-service.yaml
 
-Kubectl get svc -w
+kubectl get svc -w
 
 TASK 8 -----------------------------------------------------------------
 
