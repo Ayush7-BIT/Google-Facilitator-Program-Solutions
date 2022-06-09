@@ -53,8 +53,6 @@ kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.8
  
 kubectl get svc
  
-Check the service nginx-ingress-controller as an external IP address before continuing to the next step.
- 
 sed -i s/LAB_EMAIL_ADDRESS/$SA_NAME@$GOOGLE_CLOUD_PROJECT.iam.gserviceaccount.com/g issuer.yaml
  
 kubectl apply -f issuer.yaml
