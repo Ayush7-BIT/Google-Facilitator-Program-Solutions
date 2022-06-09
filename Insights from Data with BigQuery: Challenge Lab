@@ -2,8 +2,10 @@
 
 
 SELECT sum(cumulative_confirmed) as total_cases_worldwide
+
 FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
-WHERE date=<change date eg'020-04-10'>
+
+WHERE date = <change date eg'2020-04-10'>
 
 
 
@@ -15,7 +17,7 @@ with deaths_by_states as (
 
     FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
 
-    where country_name="United States of America" and date=<change date eg'020-04-10'> and subregion1_name is NOT NULL
+    where country_name = "United States of America" and date=<change date eg'020-04-10'> and subregion1_name is NOT NULL
 
     group by subregion1_name
 )
@@ -36,7 +38,7 @@ SELECT * FROM (
 
     FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
 
-    WHERE country_code="US" AND date=<change date eg'020-04-10'> AND subregion1_name is NOT NULL
+    WHERE country_code = "US" AND date = <change date eg'2020-04-10'> AND subregion1_name is NOT NULL
 
     GROUP BY subregion1_name
 
@@ -45,13 +47,16 @@ SELECT * FROM (
 WHERE total_confirmed_cases > <change deathcount here>
 
 
+
 4TH TASK ----------------------------------------------------------------------------------------------------------------
+
 
 SELECT sum(cumulative_confirmed) as total_confirmed_cases, sum(cumulative_deceased) as total_deaths, (sum(cumulative_deceased)/sum(cumulative_confirmed))*100 as case_fatality_ratio
 
 FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
 
-where country_name="Italy" AND date BETWEEN <change month here '2020-04-01'> and < change month here '2020-04-30'> 
+where country_name = "Italy" AND date BETWEEN <change month here '2020-04-01'> and <change month here '2020-04-30'> 
+
 
 
 5TH TASK ----------------------------------------------------------------------------------------------------------------
@@ -61,7 +66,7 @@ SELECT date
 
 FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
 
-where country_name="Italy" and cumulative_deceased> <change the value of death cross>
+where country_name = "Italy" and cumulative_deceased> <change the value of death cross>
 
 order by date asc
 
@@ -85,17 +90,13 @@ WITH india_cases_by_date AS (
 
   WHERE
 
-    country_name ="India"
+    country_name = "India"
 
-    AND date between < change the date here'2020-02-21'> and <change the date here'2020-03-15'>
+    AND date between <change the date here '2020-02-21'> and <change the date here '2020-03-15'>
 
-  GROUP BY
+  GROUP BY    date
 
-    date
-
-  ORDER BY
-
-    date ASC
+  ORDER BY    date ASC
 
  )
 
@@ -119,7 +120,7 @@ select count(*)
 
 from india_previous_day_comparison
 
-where net_new_cases=0
+where net_new_cases = 0
 
 
 
@@ -143,13 +144,9 @@ WITH us_cases_by_date AS (
 
     AND date between '2020-03-22' and '2020-04-20'
 
-  GROUP BY
+  GROUP BY    date
 
-    date
-
-  ORDER BY
-
-    date ASC
+  ORDER BY    date ASC
 
  )
 
@@ -179,7 +176,7 @@ select Date, cases as Confirmed_Cases_On_Day, previous_day as Confirmed_Cases_Pr
 
 from us_previous_day_comparison
 
-where percentage_increase > <change percentage value here>
+where percentage_increase > <change limit percentage value here>
 
 
 
@@ -233,7 +230,8 @@ WHERE cases > 50000
 
 ORDER BY recovery_rate desc
 
-LIMIT 10
+LIMIT <change Limit Value here>
+
 
 
 9TH TASK ----------------------------------------------------------------------------------------------------------------
@@ -307,11 +305,11 @@ FROM
 
 WHERE
 
-  date BETWEEN '2020-03-15'
+  date BETWEEN <change date here '2020-03-15'>
 
-  AND '2020-04-30'
+  AND <change date here '2020-04-30'>
 
-  AND country_name ="United States of America"
+  AND country_name = "United States of America"
 
 GROUP BY date
  
