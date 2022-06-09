@@ -75,20 +75,20 @@ kubectl apply -f network-policy.yaml
 nano network-policy.yaml
  
 --------- Add the following code at the last line-------
- 
+
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-name: allow-nginx-access-to-internet
+ name: allow-nginx-access-to-internet
 spec:
-podSelector:
- matchLabels:
+ podSelector:
+  matchLabels:
    app.kubernetes.io/name: ingress-nginx
-policyTypes:
-- Ingress
-ingress:
-- {}
+ policyTypes:
+ - Ingress
+ ingress:
+ - {}
  
 =================================================================
 kubectl apply -f network-policy.yaml
