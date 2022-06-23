@@ -1,29 +1,37 @@
 First Task -
 
 source <(gsutil cat gs://cloud-training/gsp318/marking/setup_marking_v2.sh)
-gcloud source repos clone valkyrie-app --project=qwiklabs-gcp-01-096d3d9fe9fc [Your Project Id]
+gcloud source repos clone valkyrie-app --project=qwiklabs-gcp-03-83486d21d35b [Your Project Id]
 cd valkyrie-app
 cat > Dockerfile <<EOF
-docker build -t valkyrie-dev:v0.0.3 . [AS PER YOUR NAME AND NUMBER]
+
+{data from given lab example: 
+FROM golang:1.10
+WORKDIR /go/src/app
+COPY source .
+RUN go install -v
+ENTRYPOINT ["app","-single=true","-port=8080"] }
+
+EOF
+docker build -t valkyrie-prod:v0.0.1 . [AS PER YOUR NAME AND NUMBER]
 cd ..
 ./step1_v2.sh
 
 
 2nd Task
 
-docker run -p 8080:8080 valkyrie-dev:v0.0.3 & [change name and number as per your lab names]
+docker run -p 8080:8080 valkyrie-prod:v0.0.1 & [change name and number as per your lab names]
 ./step2_v2.sh
 
 Task -- 3
 
-docker tag valkyrie-dev:v0.0.3 gcr.io/qwiklabs-gcp-01-096d3d9fe9fc/valkyrie-dev:v0.0.3
-docker push gcr.io/qwiklabs-gcp-01-096d3d9fe9fc/valkyrie-dev:v0.0.3
-
+docker tag valkyrie-prod:v0.0.1 gcr.io/qwiklabs-gcp-03-83486d21d35b/valkyrie-prod:v0.0.1
+docker push gcr.io/qwiklabs-gcp-03-83486d21d35b/valkyrie-prod:v0.0.1
 Task 4 -----
 
 gcloud container clusters get-credentials valkyrie-dev --zone us-east1-d
 cd valkyrie-app
-sed -i s#IMAGE_HERE#gcr.io/qwiklabs-gcp-01-096d3d9fe9fc/valkyrie-dev:v0.0.3#g k8s/deployment.yaml [copy the middle one from there]
+sed -i s#IMAGE_HERE#gcr.io/qwiklabs-gcp-03-83486d21d35b/valkyrie-prod:v0.0.1#g k8s/deployment.yaml [copy the middle one from there]
 kubectl create -f k8s/deployment.yaml
 kubectl create -f k8s/service.yaml
 
@@ -34,8 +42,8 @@ TASK 5 -----
 git merge origin/kurt-dev
 kubectl edit deployment valkyrie-dev
 
-docker build -t gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-dev:v0.0.4 . 
-docker push gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-dev:v0.0.4
+docker build -t gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-prod:v0.0.2 . 
+docker push gcr.io/$GOOGLE_CLOUD_PROJECT/valkyrie-prod:v0.0.2
 kubectl edit deployment valkyrie-dev
 
 
@@ -53,8 +61,8 @@ gcloud source repos list
 
 sed -i "s/green/orange/g" source/html.go
 sed -i "s/YOUR_PROJECT/$GOOGLE_CLOUD_PROJECT/g" Jenkinsfile
-git config --global user.email "you@example.com"    
-git config --global user.name "student"               
+git config --global user.email "student-02-bdb0a721f493@qwiklabs.net"    
+git config --global user.name "student e4698948"               
 git add .
 git commit -m "built pipeline init"
 git push 
