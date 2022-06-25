@@ -67,7 +67,7 @@ gsutil cp -r gs://cloud-training/gsp321/wp-k8s .
 TASK 6 ----------------------------------------------------------------
 
 sed -i "s/username_goes_here/wp_user/g" wp-k8s/wp-env.yaml
-sed -i "s/username_goes_here/stormwind_rules/g" wp-k8s/wp-env.yaml
+sed -i "s/password_goes_here/stormwind_rules/g" wp-k8s/wp-env.yaml
 
 cd wp-k8s
 
@@ -81,7 +81,7 @@ kubectl create secret generic cloudsql-instance-credentials \
 
 TASK 7 -----------------------------------------------------------------
 
-sed -i "s/YOUR_SQL_INSTANCE/griffin-dev-db/g" wp-deployment.yaml
+sed -i "s/YOUR_SQL_INSTANCE/griffin-dev-db/g" wp-deployment.yaml              [Possible correction here, instead of "griffin-dev-db" should be "['GCPID':us-east1:griffin-dev-db]"
 
 kubectl create -f wp-deployment.yaml
 kubectl create -f wp-service.yaml
