@@ -28,7 +28,7 @@ gcloud compute instance-groups managed create web-server-group \
           --region us-east1
           
           
-gcloud compute firewall-rules create [REPLACE YOUR FIREWALL NAME WHICH IS MENTIONED ON LEFT SIDE] \
+gcloud compute firewall-rules create \
           --allow tcp:80 \
           --network nucleus-vpc
 gcloud compute http-health-checks create http-basic-check
