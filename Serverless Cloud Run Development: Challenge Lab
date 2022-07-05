@@ -54,6 +54,10 @@ TASK 6 --------------------------------
 
 gcloud iam service-accounts create $FRONTEND_SERVICE_ACCOUNT --display-name "Billing Service Account Cloud Run Invoker"
 
+gcloud beta run services add-iam-policy-binding $PRIVATE_BILLING_SERVICE \
+  --member=serviceAccount:$FRONTEND_SERVICE_ACCOUNT@$DEVSHELL_PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/run.invoker
+
 TASK 7 -------------------------------------
 
 cd ~/pet-theory/lab07/prod-frontend-billing
