@@ -3,7 +3,7 @@
 
 SELECT sum(cumulative_confirmed) as total_cases_worldwide
 FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
-WHERE date=<change date eg'020-04-10'>
+WHERE date=<change date eg'2020-04-10'>
 
 
 
@@ -36,7 +36,7 @@ SELECT * FROM (
 
     FROM `bigquery-public-data.covid19_open_data.covid19_open_data`
 
-    WHERE country_code="US" AND date=<change date eg'020-04-10'> AND subregion1_name is NOT NULL
+    WHERE country_code="US" AND date=<change date eg'2020-04-10'> AND subregion1_name is NOT NULL
 
     GROUP BY subregion1_name
 
