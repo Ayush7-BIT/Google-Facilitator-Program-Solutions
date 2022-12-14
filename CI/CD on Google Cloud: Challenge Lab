@@ -3,7 +3,7 @@ TASK ------ 2
 COMMAND 3RD -
 cd web
 skaffold build --interactive=false \
---default-repo us-central1-docker.pkg.dev/qwiklabs-gcp-02-396ab3d9f9cd/cicd-challenge \
+--default-repo us-west1-docker.pkg.dev/qwiklabs-gcp-03-e5aeae3141de/cicd-challenge \
 --file-output artifacts.json
 cd ..
 
@@ -57,7 +57,7 @@ cat web/skaffold.yaml
 
 cd web
 skaffold build --interactive=false \
---default-repo us-east1-docker.pkg.dev/qwiklabs-gcp-02-15226cdf6297/cicd-challenge \
+--default-repo us-west1-docker.pkg.dev/qwiklabs-gcp-03-e5aeae3141de/cicd-challenge \
 --file-output artifacts.json
 cd ..
 
