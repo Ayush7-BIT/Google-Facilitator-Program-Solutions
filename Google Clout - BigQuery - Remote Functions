@@ -1,0 +1,28 @@
+TASK 3RD -----------------------------
+
+connection name :- myfunction
+
+CREATE FUNCTION my_dataset. remote_function(x FLOAT64, y FLOAT64)
+RETURNS FLOAT64
+REMOTE WITH CONNECTION us.myfunction
+OPTIONS(endpoint="https://us-east1-qwiklabs-gcp-00-8d0b3ceeb49d.cloudfunctions.net/remote_add");
+
+
+TASK 5 ---------------------------
+
+import json
+
+_MAX_LOSSLESS=9007199254740992
+
+def batch_add(request):
+  try:
+    return_value = []
+    request_json = request.get_json()
+    calls = request_json['calls']
+    for call in calls:
+      return_value.append(sum([int(x) if isinstance(x, str) else x for x in call if x is not None]))
+    replies = [str(x) if x > _MAX_LOSSLESS or x < -_MAX_LOSSLESS else x for x in return_value]
+    return_json = json.dumps( { "replies" :  replies} )
+    return return_json
+  except Exception as inst:
+    return json.dumps( { "errorMessage": 'something unexpected in input' } ), 400
