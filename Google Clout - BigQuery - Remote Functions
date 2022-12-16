@@ -5,10 +5,10 @@ connection name :- myfunction
 CREATE FUNCTION my_dataset. remote_function(x FLOAT64, y FLOAT64)
 RETURNS FLOAT64
 REMOTE WITH CONNECTION us.myfunction
-OPTIONS(endpoint="https://us-east1-qwiklabs-gcp-00-8d0b3ceeb49d.cloudfunctions.net/remote_add");
+OPTIONS(endpoint="https://us-west1-qwiklabs-gcp-00-460641210213.cloudfunctions.net/remote_add");
 
 
-TASK 5 ---------------------------
+TASK 4 ---------------------------
 
 import json
 
