@@ -3,54 +3,7 @@ Task 1 --------------------------------------------------------
  
 gsutil cp gs://spls/solutions/DRL3.ipynb .
 
-Task 3 ---------------------------------------------------------
  
-Navigate to Vertex AI > Model Registry
- 
-Click Import
- 
-Name the model drl-lap-time-predictor
- 
-Choose the dynamically selected region variable displayed in Task 3 for the region
- 
-Click Model Settings
- 
-Choose 2.10 for the Model Framework Version
- 
-Navigate and select the following path for the Model Artifact Location:
- 
-gs://[project-id]-bucket/model
- 
-Click Import
- 
-Task 4 ---------------------------------------------------------------
- 
-Navigate to Vertex AI > Endpoints
- 
-Click Create Endpoint
- 
-Name the endpoint drl-lt-endpoint
- 
-Choose the dynamically generated region for the region
- 
-Ensure the traffic split is set to 100%
- 
-Click on advanced scaling settings
- 
-Choose e2-standard-2 for machine type
- 
-Click Create
- 
-Task 7 ----------------------------------------------------------------
- 
-Open main.py in a text editor
-Find the predict_custom_trained_model_sample() function
-Change the value of the project argument to the unique project number
-Change the value of the endpoint id argument to the unique endpoint ID
-Change the value of the location argument to the dynamically selected region
-Change the value of the api_endpoint argument to the region + "-aiplatform.googleapis.com"
- 
-These values can be found in the Sample Request of created endpoint from Task 4
  
 Task 8 --------------------------------------------------------------------
  
@@ -60,14 +13,4 @@ gcloud auth configure-docker us-docker.pkg.dev
 docker build . -t us-docker.pkg.dev/$DEVSHELL_PROJECT_ID/drl-lap-time-predictor/webapp:0.2
 gcloud artifacts repositories create drl-lap-time-predictor --repository-format=docker --location=us
 docker push us-docker.pkg.dev/$DEVSHELL_PROJECT_ID/drl-lap-time-predictor/webapp:0.2
- 
-Task 9 ---------------------------------------------------------------------
- 
-Back in cloud console
- 
-Navigate to Cloud Run
-Click on the drl-race-predictor service
-Click Edit and Deploy New Revision
-Select the us-docker.pkg.dev/$DEVSHELL_PROJECT_ID/drl-lap-time-predictor/webapp:0.2 container
-Click Deploy
  
