@@ -1,0 +1,39 @@
+export Your_Project_Id=
+
+gcloud compute networks create xall-vpc--vpc-01 \
+    --description="Please like share & subscribe to quicklab" \
+    \
+    --project=$Your_Project_Id \
+    \
+    --subnet-mode=custom \
+    --bgp-routing-mode=global \
+    --mtu=1460
+
+
+gcloud compute networks subnets create xgl-subnet--cerps-bau-nonprd--be1-01 \
+    --description="Please like share & subscribe to quicklab" \
+    \
+    --project=$Your_Project_Id \
+    --network=xall-vpc--vpc-01 \
+    --region=us-central1 \
+    \
+    --range=10.1.1.0/24 \
+    --enable-private-ip-google-access \
+    --enable-flow-logs
+
+
+gcloud compute firewall-rules create xall-vpc--vpc-01--xall-fw--user--a--linux--v01 \
+    --description="Please like share & subscribe to quicklab" \
+    \
+    --project=$Your_Project_Id \
+    --network=xall-vpc--vpc-01 \
+    \
+    --priority=1000 \
+    --direction=ingress \
+    --action=allow \
+    --target-tags=xall-vpc--vpc-01--xall-fw--user--a--linux--v01 \
+    --source-ranges=0.0.0.0/0 \
+    --rules=tcp:22,icmp
+
+
+gcloud compute firewall-rules create xall-vpc--vpc-01--xall-fw--user--a--windows--v01 \
