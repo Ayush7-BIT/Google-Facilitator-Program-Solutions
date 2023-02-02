@@ -1,7 +1,7 @@
 export Your_Project_Id=
 
 gcloud compute networks create xall-vpc--vpc-01 \
-    --description="Please like share & subscribe to quicklab" \
+    --description="Love from BCW" \
     \
     --project=$Your_Project_Id \
     \
@@ -11,7 +11,7 @@ gcloud compute networks create xall-vpc--vpc-01 \
 
 
 gcloud compute networks subnets create xgl-subnet--cerps-bau-nonprd--be1-01 \
-    --description="Please like share & subscribe to quicklab" \
+    --description="Love from BCW" \
     \
     --project=$Your_Project_Id \
     --network=xall-vpc--vpc-01 \
@@ -23,7 +23,7 @@ gcloud compute networks subnets create xgl-subnet--cerps-bau-nonprd--be1-01 \
 
 
 gcloud compute firewall-rules create xall-vpc--vpc-01--xall-fw--user--a--linux--v01 \
-    --description="Please like share & subscribe to quicklab" \
+    --description="Love from BCW" \
     \
     --project=$Your_Project_Id \
     --network=xall-vpc--vpc-01 \
