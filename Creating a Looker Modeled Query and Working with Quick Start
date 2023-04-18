@@ -1,5 +1,6 @@
 connection: "bigquery_public_data_looker"
 
+# include all the views
 include: "/views/*.view"
 include: "/z_tests/*.lkml"
 include: "/**/*.dashboard"
@@ -39,7 +40,7 @@ explore: order_items {
   }
 }
 
-
+# Place in `training_ecommerce` model
 explore: +order_items {
   query: start_from_here{
       dimensions: [products.department, users.state]
