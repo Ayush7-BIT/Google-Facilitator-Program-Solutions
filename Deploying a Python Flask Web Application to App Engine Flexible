@@ -1,4 +1,4 @@
-Use us-central as Region when needed!
+Use us-central1 as Region when needed!
 
 gcloud storage cp -r gs://spls/gsp023/flex_and_vision/ .
 cd flex_and_vision
