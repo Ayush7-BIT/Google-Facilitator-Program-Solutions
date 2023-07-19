@@ -3,8 +3,8 @@ export REGION=#From Task5
 ----------------------------------------------------------
 
 gsutil mb gs://$DEVSHELL_PROJECT_ID
-curl -O -L https://github.com/CodingWithHardik/Level-2-Data-Deep-Dive/blob/master/files/start_station_data.csv
-curl -O -L https://github.com/CodingWithHardik/Level-2-Data-Deep-Dive/blob/master/files/end_station_data.csv
+curl -O -L https://github.com/Ayush7-BIT/Google-Facilitator-Program-Solutions/blob/main/start_station_data.csv
+curl -O -L https://github.com/Ayush7-BIT/Google-Facilitator-Program-Solutions/blob/main/end_station_data.csv
 gsutil cp start_station_data.csv gs://$DEVSHELL_PROJECT_ID
 gsutil cp end_station_data.csv gs://$DEVSHELL_PROJECT_ID
 gcloud sql instances create my-demo --database-version=MYSQL_5_7 --region=$REGION --tier=db-n1-standard-1 --root-password=""
