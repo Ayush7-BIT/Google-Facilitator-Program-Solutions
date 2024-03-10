@@ -1,6 +1,3 @@
-docker run hello-world
-docker run hello-world
-docker ps
 mkdir test && cd test
 cat > Dockerfile <<EOF
 # Use an official Node runtime as the parent image
@@ -47,7 +44,8 @@ docker run -p 4000:80 --name my-app node-app:0.1
 
 
 
-gcloud auth configure-docker us-central1-docker.pkg.dev
+
 gcloud artifacts repositories create my-repository --repository-format=docker --location=us-central1 --description="Docker repository"
+gcloud auth configure-docker us-central1-docker.pkg.dev
 docker build -t us-central1-docker.pkg.dev/qwiklabs-gcp-00-8ce007aa4ffa/my-repository/node-app:0.2 .
 docker push us-central1-docker.pkg.dev/qwiklabs-gcp-00-8ce007aa4ffa/my-repository/node-app:0.2
