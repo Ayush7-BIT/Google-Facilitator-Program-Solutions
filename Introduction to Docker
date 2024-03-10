@@ -1,4 +1,4 @@
-ocker run hello-world
+docker run hello-world
 docker run hello-world
 docker ps
 mkdir test && cd test
