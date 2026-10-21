@@ -1,0 +1,82 @@
+while creating api select cloud speech one!
+export API_KEY="PASTE_YOUR_ACTUAL_API_KEY_HERE"
+
+export GOOGLE_CLOUD_PROJECT=$(gcloud config get-value project)
+export BUCKET_NAME="${GOOGLE_CLOUD_PROJECT}-speech"
+
+echo "$GOOGLE_CLOUD_PROJECT"
+echo "$BUCKET_NAME"
+
+
+task 2 --------------------------------------------------------------------------------
+
+change your file names
+
+# Filenames
+REQ="request.json"
+RES="speech_response.json"
+
+# Create request
+cat > "$REQ" <<'EOF'
+{
+  "config": {
+    "encoding": "LINEAR16",
+    "languageCode": "en-US",
+    "audioChannelCount": 2
+  },
+  "audio": {
+    "uri": "gs://spls/arc131/question_en.wav"
+  }
+}
+EOF
+
+# Call API
+curl -sS -X POST \
+  -H "Content-Type: application/json" \
+  --data-binary @"$REQ" \
+  "https://speech.googleapis.com/v1/speech:recognize?key=${API_KEY}" \
+  -o "$RES"
+
+# Inspect response
+cat "$RES"
+
+# Upload both files
+gcloud storage cp "$REQ" "gs://${BUCKET_NAME}/$REQ"
+gcloud storage cp "$RES" "gs://${BUCKET_NAME}/$RES"
+
+
+task 3 ---------------------------------------------------------------------------------
+
+change your file names
+
+
+# Filenames
+REQ="request_speech_sp.json"
+RES="speech_response_sp.json"
+
+# Create request
+cat > "$REQ" <<'EOF'
+{
+  "config": {
+    "encoding": "FLAC",
+    "languageCode": "es-ES"
+  },
+  "audio": {
+    "uri": "gs://spls/arc131/multi_es.flac"
+  }
+}
+EOF
+
+# Call API
+curl -sS -X POST \
+  -H "Content-Type: application/json" \
+  --data-binary @"$REQ" \
+  "https://speech.googleapis.com/v1/speech:recognize?key=${API_KEY}" \
+  -o "$RES"
+
+# Inspect response
+cat "$RES"
+
+# Upload both files
+gcloud storage cp "$REQ" "gs://${BUCKET_NAME}/$REQ"
+gcloud storage cp "$RES" "gs://${BUCKET_NAME}/$RES"
