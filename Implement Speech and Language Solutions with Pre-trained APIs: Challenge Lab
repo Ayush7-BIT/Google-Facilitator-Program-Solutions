@@ -1,0 +1,209 @@
+Check that the prompt shows the project in brackets, like (qwiklabs-gcp-...). If it doesn’t, run gcloud config set project <Project ID from the lab panel>
+
+cat > lab.sh <<'LABEOF'
+#!/bin/bash
+# Universal solver: Implement Speech and Language Solutions with Google Cloud APIs
+# Run in Cloud Shell with:  bash lab.sh
+
+#################### PART 2: runs on the lab VM (automatic) ####################
+vm_part() {
+source ~/lab_config.env
+cd ~
+
+retry() {            # retry <output-file> <curl command...>
+  local out="$1"; shift
+  for i in 1 2 3 4 5 6; do
+    "$@" > "$out"
+    grep -q '"error"' "$out" || return 0
+    echo "   attempt $i failed, waiting 10s (a new key can take a minute to activate)..."
+    sleep 10
+  done
+  return 1
+}
+
+echo "=== Task 2: Text-to-Speech ==="
+cat > synthesize-text.json <<'JSON1'
+{
+  "input": {
+    "text": "Cloud Text-to-Speech API allows developers to include natural-sounding, synthetic human speech as playable audio in their applications. The Text-to-Speech API converts text or Speech Synthesis Markup Language (SSML) input into audio data like MP3 or LINEAR16 (the encoding used in WAV files)."
+  },
+  "voice": {
+    "languageCode": "en-GB",
+    "name": "en-GB-Standard-A",
+    "ssmlGender": "FEMALE"
+  },
+  "audioConfig": {
+    "audioEncoding": "MP3"
+  }
+}
+JSON1
+retry "$TTS_RESPONSE" curl -s -H "Content-Type: application/json" -d @synthesize-text.json \
+  "https://texttospeech.googleapis.com/v1/text:synthesize?key=${API_KEY}"
+
+cat > tts_decode.py <<'PY1'
+import argparse
+from base64 import decodebytes
+import json
+
+"""
+Usage:
+        python3 tts_decode.py --input "synthesize-text.txt" \
+        --output "synthesize-text-audio.mp3"
+
+"""
+
+def decode_tts_output(input_file, output_file):
+    """ Decode output from Cloud Text-to-Speech.
+
+    input_file: the response from Cloud Text-to-Speech
+    output_file: the name of the audio file to create
+
+    """
+
+    with open(input_file) as input:
+        response = json.load(input)
+        audio_data = response['audioContent']
+
+        with open(output_file, "wb") as new_file:
+            new_file.write(decodebytes(audio_data.encode('utf-8')))
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description="Decode output from Cloud Text-to-Speech",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--input',
+                       help='The response from the Text-to-Speech API.',
+                       required=True)
+    parser.add_argument('--output',
+                       help='The name of the audio file to create',
+                       required=True)
+
+    args = parser.parse_args()
+    decode_tts_output(args.input, args.output)
+PY1
+python3 tts_decode.py --input "$TTS_RESPONSE" --output "synthesize-text-audio.mp3"
+ls -l synthesize-text-audio.mp3
+
+echo "=== Task 3: Speech-to-Text ==="
+cat > "$STT_REQUEST" <<JSON2
+{
+  "config": {
+    "encoding": "FLAC",
+    "languageCode": "${STT_LANG}"
+  },
+  "audio": {
+    "uri": "gs://cloud-samples-data/speech/corbeau_renard.flac"
+  }
+}
+JSON2
+retry "$STT_RESPONSE" curl -s -X POST -H "Content-Type: application/json" --data-binary @"$STT_REQUEST" \
+  "https://speech.googleapis.com/v1/speech:recognize?key=${API_KEY}"
+cat "$STT_RESPONSE"
+
+echo "=== Task 4: Translate ==="
+retry "$TRANSLATE_OUT" curl -s -X POST --data-urlencode "q=${TRANSLATE_TEXT}" --data-urlencode "target=${TARGET_LANG}" \
+  "https://translation.googleapis.com/language/translate/v2?key=${API_KEY}"
+cat "$TRANSLATE_OUT"
+
+echo "=== Task 5: Detect language ==="
+retry "$DETECT_OUT" curl -s -X POST --data-urlencode "q=${DETECT_TEXT}" \
+  "https://translation.googleapis.com/language/translate/v2/detect?key=${API_KEY}"
+cat "$DETECT_OUT"
+
+echo
+echo "=== Self-check ==="
+check() { if eval "$1"; then echo "  PASS  $2"; else echo "  FAIL  $2"; fi; }
+check '[ "$(stat -c%s synthesize-text-audio.mp3 2>/dev/null || echo 0)" -gt 10000 ]' "Task 2: MP3 created"
+check 'grep -q audioContent "$TTS_RESPONSE"' "Task 2: response saved in $TTS_RESPONSE"
+check 'grep -q transcript "$STT_RESPONSE"' "Task 3: transcript saved in $STT_RESPONSE"
+check 'grep -q translatedText "$TRANSLATE_OUT"' "Task 4: translation saved in $TRANSLATE_OUT"
+check 'grep -q language "$DETECT_OUT"' "Task 5: detection saved in $DETECT_OUT"
+}
+
+#################### PART 1: runs in Cloud Shell ####################
+if [ "$1" = "--vm" ]; then vm_part; exit 0; fi
+
+ask() { local r; read -e -r -p "$2 [$3]: " r; printf -v "$1" '%s' "${r:-$3}"; }
+
+PROJECT=$(gcloud config get-value project 2>/dev/null)
+if [ -z "$PROJECT" ]; then
+  echo "STOP: no project set. Run: gcloud config set project <Project ID from the lab panel>"
+  exit 1
+fi
+echo "Project: $PROJECT"
+
+echo "=== Task 1: API key ==="
+gcloud services enable apikeys.googleapis.com texttospeech.googleapis.com speech.googleapis.com translate.googleapis.com
+get_key() {
+  local n
+  n=$(gcloud services api-keys list --filter="displayName=lab-key" --format="value(name)" 2>/dev/null | head -1)
+  [ -n "$n" ] && gcloud services api-keys get-key-string "$n" --format="value(keyString)" 2>/dev/null
+}
+API_KEY=$(get_key)
+if [ ${#API_KEY} -ne 39 ]; then
+  gcloud services api-keys create --display-name="lab-key" \
+    --api-target=service=texttospeech.googleapis.com \
+    --api-target=service=speech.googleapis.com \
+    --api-target=service=translate.googleapis.com
+  sleep 10
+  API_KEY=$(get_key)
+fi
+if [ ${#API_KEY} -ne 39 ]; then   # last resort: use any key already in the project
+  n=$(gcloud services api-keys list --format="value(name)" 2>/dev/null | head -1)
+  [ -n "$n" ] && API_KEY=$(gcloud services api-keys get-key-string "$n" --format="value(keyString)")
+fi
+if [ ${#API_KEY} -ne 39 ]; then
+  echo "STOP: no API key. Create one in Console > APIs & Services > Credentials > Create credentials > API key"
+  echo "      (restrict it to Text-to-Speech, Speech-to-Text and Translation), then run: bash lab.sh"
+  exit 1
+fi
+echo "API key ready (length ${#API_KEY}). Click 'Check my progress' for Task 1 on the lab page."
+
+echo
+echo "=== Enter the YELLOW values from the lab (press Enter to keep the default) ==="
+DEFAULT_VM=$(gcloud compute instances list --format="value(name)" 2>/dev/null | head -1)
+ask VM             "VM instance name"                               "${DEFAULT_VM:-lab-vm}"
+ask TTS_RESPONSE   "Task 2 - file to store the Text-to-Speech result" "synthesize-text.txt"
+ask STT_REQUEST    "Task 3 - request file name (.json)"             "speech_request_fr.json"
+ask STT_RESPONSE   "Task 3 - file to store the result"              "speech_response.json"
+ask STT_LANG       "Task 3 - language code (French = fr-FR)"        "fr-FR"
+ask TRANSLATE_TEXT "Task 4 - sentence to translate"                 "これは日本語です。"
+ask TARGET_LANG    "Task 4 - target language code (English = en)"   "en"
+ask TRANSLATE_OUT  "Task 4 - file to store the result"              "translated_response.txt"
+ask DETECT_TEXT    "Task 5 - sentence to detect"                    "Este é japonês."
+ask DETECT_OUT     "Task 5 - file to store the result"              "detected_response.txt"
+
+ZONE=$(gcloud compute instances list --filter="name=$VM" --format="value(zone.basename())")
+[ -z "$ZONE" ] && { echo "STOP: VM '$VM' not found"; exit 1; }
+
+for v in API_KEY TTS_RESPONSE STT_REQUEST STT_RESPONSE STT_LANG TRANSLATE_TEXT TARGET_LANG TRANSLATE_OUT DETECT_TEXT DETECT_OUT; do
+  printf '%s=%q\n' "$v" "${!v}"
+done > lab_config.env
+chmod 600 lab_config.env
+
+echo "=== Copying to $VM ($ZONE) and running there ==="
+gcloud compute scp lab.sh lab_config.env "$VM":~/ --zone="$ZONE" --quiet
+gcloud compute ssh "$VM" --zone="$ZONE" --quiet --command="bash ~/lab.sh --vm"
+echo
+echo ">>> Done. On the lab page, click 'Check my progress' for Tasks 2, 3, 4 and 5."
+LABEOF
+
+
+
+
+
+
+---------------
+
+bash lab.sh
+
+
+--------------------------
+
+
+
+
+
+
+
+
