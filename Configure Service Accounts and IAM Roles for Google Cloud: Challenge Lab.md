@@ -22,8 +22,8 @@ echo "Project: $PROJECT_ID"
 
 echo
 echo "=== Enter the values from the lab (press Enter to keep the default) ==="
-ask ZONE    "Zone (challenge scenario: 'region ... and ... zone')" "us-east4-a"
-ask ROLE_ID "Custom role ID for Task 5 (use the name in the hint if it gives one)" "custom_sql_role"
+ask ZONE    "Zone (challenge scenario: 'region ... and ... zone')" "us-west1-b"
+ask ROLE_ID "Custom role name for Task 5 (the name in the Task 5 Gemini prompt)" "editor"
 REGION="${ZONE%-*}"
 gcloud config set compute/zone "$ZONE" >/dev/null 2>&1
 gcloud config set compute/region "$REGION" >/dev/null 2>&1
@@ -43,14 +43,14 @@ echo "SA = $SA"
 echo
 echo "=== Task 3: IAM roles for '$SA_NAME' ==="
 retry bind "$SA" roles/iam.serviceAccountUser || die "could not grant iam.serviceAccountUser"
-retry bind "$SA" roles/compute.instanceAdmin.v1 || die "could not grant compute.instanceAdmin.v1"
-bind "$SA" roles/compute.instanceAdmin 2>/dev/null || true   # extra variant, harmless if unavailable
+retry bind "$SA" roles/compute.instanceAdmin || die "could not grant compute.instanceAdmin"
+bind "$SA" roles/compute.instanceAdmin.v1 2>/dev/null || true   # extra variant, harmless if unavailable
 echo "roles granted"
 
 echo
 echo "=== Task 4: VM '$VM2_NAME' with the '$SA_NAME' service account ==="
 gcloud compute instances describe "$VM2_NAME" --zone="$ZONE" >/dev/null 2>&1 || \
-  gcloud compute instances create "$VM2_NAME" --zone="$ZONE" --service-account="$SA" --scopes="$SCOPES"
+  retry gcloud compute instances create "$VM2_NAME" --zone="$ZONE" --service-account="$SA" --scopes="$SCOPES" || die "could not create $VM2_NAME"
 echo "Attached service account: $(gcloud compute instances describe "$VM2_NAME" --zone="$ZONE" --format='value(serviceAccounts[0].email)')"
 echo "--- verifying from inside $VM2_NAME (list, create, delete an instance) ---"
 retry gcloud compute ssh "$VM2_NAME" --zone="$ZONE" --quiet --command="echo ssh-ok" || die "could not SSH into $VM2_NAME"
@@ -62,7 +62,7 @@ gcloud compute instances delete verify-from-vm2 --zone=$ZONE --quiet --project=$
 " || echo "(the check from inside $VM2_NAME reported an error - the VM itself is still set up)"
 
 echo
-echo "=== Task 5: custom role from $YAML_FILE ==="
+echo "=== Task 5: custom role '$ROLE_ID' from $YAML_FILE ==="
 cat > "$YAML_FILE" <<'YAML1'
 title: "Cloud SQL Connect Role"
 description: "Custom role with Cloud SQL connect and get permissions"
@@ -86,7 +86,7 @@ retry gcloud iam service-accounts describe "$BQ_SA" >/dev/null 2>&1 || die "serv
 retry bind "$BQ_SA" roles/bigquery.dataViewer || die "could not grant BigQuery Data Viewer"
 retry bind "$BQ_SA" roles/bigquery.user || die "could not grant BigQuery User"
 gcloud compute instances describe "$BQ_VM_NAME" --zone="$ZONE" >/dev/null 2>&1 || \
-  gcloud compute instances create "$BQ_VM_NAME" --zone="$ZONE" --service-account="$BQ_SA" --scopes="$SCOPES"
+  retry gcloud compute instances create "$BQ_VM_NAME" --zone="$ZONE" --service-account="$BQ_SA" --scopes="$SCOPES" || die "could not create $BQ_VM_NAME"
 
 cat > query.py <<'PY1'
 from google.auth import compute_engine
@@ -123,11 +123,11 @@ echo "=== Self-check ==="
 check() { if eval "$1"; then echo "  PASS  $2"; else echo "  FAIL  $2"; fi; }
 roles_of() { gcloud projects get-iam-policy "$PROJECT_ID" --flatten="bindings[].members" --filter="bindings.members:serviceAccount:$1" --format="value(bindings.role)" 2>/dev/null; }
 check 'gcloud iam service-accounts describe "$SA" >/dev/null 2>&1' "Task 2: service account $SA_NAME exists"
-check 'roles_of "$SA" | grep -q "roles/iam.serviceAccountUser"' "Task 3: iam.serviceAccountUser granted"
-check 'roles_of "$SA" | grep -q "roles/compute.instanceAdmin"' "Task 3: compute.instanceAdmin granted"
+check 'roles_of "$SA" | grep -qx "roles/iam.serviceAccountUser"' "Task 3: iam.serviceAccountUser granted"
+check 'roles_of "$SA" | grep -qx "roles/compute.instanceAdmin"' "Task 3: compute.instanceAdmin granted"
 check '[ "$(gcloud compute instances describe "$VM2_NAME" --zone="$ZONE" --format="value(serviceAccounts[0].email)" 2>/dev/null)" = "$SA" ]' "Task 4: $VM2_NAME runs as $SA_NAME"
 check 'gcloud iam roles describe "$ROLE_ID" --project="$PROJECT_ID" --format="value(includedPermissions)" 2>/dev/null | grep -q "cloudsql.instances.connect"' "Task 5: custom role $ROLE_ID has the permissions"
-check 'roles_of "$BQ_SA" | grep -q "roles/bigquery.dataViewer" && roles_of "$BQ_SA" | grep -q "roles/bigquery.user"' "Task 6: BigQuery roles granted to $BQ_SA_NAME"
+check 'roles_of "$BQ_SA" | grep -qx "roles/bigquery.dataViewer" && roles_of "$BQ_SA" | grep -qx "roles/bigquery.user"' "Task 6: BigQuery roles granted to $BQ_SA_NAME"
 check '[ "$(gcloud compute instances describe "$BQ_VM_NAME" --zone="$ZONE" --format="value(serviceAccounts[0].email)" 2>/dev/null)" = "$BQ_SA" ]' "Task 6: $BQ_VM_NAME runs as $BQ_SA_NAME"
 check 'grep -q total_people bq_output.txt' "Task 6: the BigQuery query ran"
 echo
@@ -135,15 +135,7 @@ echo ">>> Done. On the lab page, click 'Check my progress' for Tasks 2, 3, 4, 5 
 LABEOF
 ```
 
-
 bash lab5.sh
-
-
-
-
-
-
-
 
 
 
