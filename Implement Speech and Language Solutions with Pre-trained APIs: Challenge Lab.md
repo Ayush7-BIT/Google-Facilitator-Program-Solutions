@@ -63,11 +63,11 @@ DEFAULT_BUCKET=$(gcloud storage buckets list --format="value(name)" 2>/dev/null 
 ask BUCKET         "Bucket name (named in the lab intro)"          "${DEFAULT_BUCKET:-${PROJECT}-speech}"
 ask TTS_RESPONSE   "Task 2 - file for the Text-to-Speech result"   "synthesize-text.txt"
 ask STT_REQUEST    "Task 3 - request file name (.json)"            "speech_request_fr.json"
-ask STT_RESPONSE   "Task 3 - file for the result"                  "speech_response.json"
+ask STT_RESPONSE   "Task 3 - file for the result"                  "response.json"
 ask TRANSLATE_TEXT "Task 4 - sentence to translate"                "これは日本語です。"
 ask TRANSLATE_OUT  "Task 4 - file for the result"                  "translation_response.txt"
 ask DETECT_TEXT    "Task 5 - sentence to detect"                   "Este%é%japonês."
-ask DETECT_OUT     "Task 5 - file for the result"                  "detected_response.txt"
+ask DETECT_OUT     "Task 5 - file for the result"                  "detection_response.txt"
 
 gcloud storage ls "gs://$BUCKET" >/dev/null 2>&1 || die "bucket gs://$BUCKET not found. Copy the exact bucket name from the lab intro and run again."
 cd ~
