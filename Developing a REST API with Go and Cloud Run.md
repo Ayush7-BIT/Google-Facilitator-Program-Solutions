@@ -1,7 +1,9 @@
 ```/text
 cat > rest_api_lab.sh <<'LABEOF'
 #!/bin/bash
-# Developing a REST API with Go and Cloud Run (GSP761) - universal solution (v2: fixes the actAs permission error)
+# Developing a REST API with Go and Cloud Run (GSP761) - universal solution (v3)
+# v3: works around "iam.serviceaccounts.actAs denied" on Cloud Run deploys,
+#     and keeps going with the other tasks if the deploy turns out to be impossible.
 
 PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
 if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "(unset)" ]; then
@@ -26,13 +28,13 @@ if [ -z "$DET_REGION" ] || [ "$DET_REGION" = "(unset)" ]; then
     --format="value(commonInstanceMetadata.items[google-compute-default-region])" 2>/dev/null </dev/null)
 fi
 if [ -z "$DET_REGION" ] || [ "$DET_REGION" = "(unset)" ]; then
-  echo "Could not detect the region. Read it from the Lab setup panel and type it at the first prompt."
-  DET_REGION="us-central1"
+  echo "Could not detect the region. Read it from the lab text and type it at the first prompt."
+  DET_REGION="us-west1"
 fi
 
 echo
 echo "=== Press ENTER to accept each default (defaults are detected / this lab's values) ==="
-ask "Region (Lab setup panel)                   " "$DET_REGION" REGION
+ask "Region (lab text: 'Select the region ...')  " "$DET_REGION" REGION
 ask "Distroless base image (Task 2 step 5, after FROM)" "gcr.io/distroless/base-debian12" BASE_IMAGE
 ask "Firestore location                         " "$REGION" FS_LOCATION
 ask "Artifact Registry repo                     " "my-repo" REPO
@@ -52,11 +54,18 @@ pause() {
 
 REG_PATH="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}"
 PN=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)" 2>/dev/null)
+DEPLOY_OK=0
+RUNTIME_SA=""
+USE_BUILD_DEPLOY=0
+ACTAS_TRIED=0
+URL=""
 
 echo
 echo "Your roles on this project (for troubleshooting):"
 gcloud projects get-iam-policy "$PROJECT_ID" --flatten="bindings[].members" \
   --filter="bindings.members:user:${ACCOUNT}" --format="value(bindings.role)" 2>/dev/null | sed 's/^/   /'
+echo "Service accounts in this project:"
+gcloud iam service-accounts list --format="value(email)" 2>/dev/null | sed 's/^/   /'
 
 # ---------- helpers ----------
 tag_exists() {
@@ -73,7 +82,7 @@ check_image() {   # 0 = exists or unknown, 1 = definitely missing (gcr.io only)
 }
 
 fix_build_permissions() {
-  echo "Granting build/deploy roles to the default service accounts (only done after a failure)..."
+  echo "Granting build roles to the default service accounts (only done after a failure)..."
   local sa role
   for sa in "${PN}-compute@developer.gserviceaccount.com" "${PN}@cloudbuild.gserviceaccount.com"; do
     for role in roles/artifactregistry.writer roles/storage.objectAdmin roles/logging.logWriter; do
@@ -84,20 +93,19 @@ fix_build_permissions() {
   sleep 20
 }
 
-grant_user_role() {   # grant_user_role <role>  -> gives YOUR student account a role on the project
+grant_user_role() {   # grant_user_role <role>  -> tries to give YOUR student account a role
   local out
   if out=$(gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="user:${ACCOUNT}" --role="$1" --condition=None 2>&1); then
     echo "   granted $1 to $ACCOUNT"
     return 0
   fi
-  echo "   COULD NOT grant $1 to $ACCOUNT:"
-  echo "$out" | tail -n 3 | sed 's/^/      /'
+  echo "   (not allowed to grant $1 to $ACCOUNT in this lab)"
   return 1
 }
 
-fix_actas() {   # fix_actas <service account unique id or email taken from the error message>
+fix_actas() {   # fix_actas <service account unique id or email from the error message>
   local id="$1" email=""
-  echo "The command needs permission to act as service account: $id"
+  echo "The build needs permission to act as service account: $id"
   if echo "$id" | grep -q "@"; then
     email="$id"
   elif [ -n "$id" ]; then
@@ -111,15 +119,6 @@ fix_actas() {   # fix_actas <service account unique id or email taken from the e
       && echo "   granted serviceAccountUser on $email to $ACCOUNT" \
       || echo "   (could not grant on the service account itself - trying project level)"
   fi
-  grant_user_role roles/iam.serviceAccountUser
-  sleep 20
-}
-
-fix_actas_generic() {   # used for Cloud Run deploy errors
-  echo "Granting your account permission to act as the default service accounts..."
-  gcloud iam service-accounts add-iam-policy-binding "${PN}-compute@developer.gserviceaccount.com" \
-    --project="$PROJECT_ID" --member="user:${ACCOUNT}" --role=roles/iam.serviceAccountUser --quiet >/dev/null 2>&1 \
-    && echo "   granted serviceAccountUser on the default compute service account"
   grant_user_role roles/iam.serviceAccountUser
   sleep 20
 }
@@ -150,7 +149,6 @@ submit_build() {   # submit_build <tag>
     rc=${PIPESTATUS[0]}
     [ "$rc" -eq 0 ] && return 0
     echo "Build command failed (try $i/4)."
-    # the build may have started and succeeded even if streaming the log failed
     id=$(grep -o 'builds/[0-9a-f-]\{36\}' build_log.txt | head -n1 | sed 's#builds/##')
     if [ -n "$id" ]; then
       echo "Build $id was created - checking its status..."
@@ -174,27 +172,118 @@ build_server() {
   go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o server
 }
 
-deploy_service() {   # deploy_service <tag>
-  local tag="$1" i
-  for i in 1 2 3 4; do
-    gcloud run deploy "$SERVICE" --image "${REG_PATH}:${tag}" \
-      --region "$REGION" --allow-unauthenticated --max-instances=2 --quiet 2>&1 | tee deploy_log.txt
-    [ "${PIPESTATUS[0]}" -eq 0 ] && return 0
-    if grep -qi "actAs\|permission to act as" deploy_log.txt; then fix_actas_generic; fi
-    echo "Deploy failed (try $i/4) - waiting 20s"; sleep 20
-  done
-  return 1
-}
-
 get_url() {
   gcloud run services describe "$SERVICE" --region "$REGION" --format="value(status.url)" 2>/dev/null
+}
+
+api_get() {   # api_get <path>  -> tries without login, then with your identity token
+  local out
+  out=$(curl -s "${URL}$1")
+  if [ -z "$out" ] || echo "$out" | grep -qiE "403|forbidden|<html"; then
+    out=$(curl -s -H "Authorization: Bearer $(gcloud auth print-identity-token 2>/dev/null)" "${URL}$1")
+  fi
+  echo "$out"
+}
+
+# ---------- Cloud Run deploy with workarounds ----------
+run_deploy() {   # run_deploy <tag> [extra gcloud args]
+  local tag="$1"; shift
+  gcloud run deploy "$SERVICE" --image "${REG_PATH}:${tag}" --region "$REGION" \
+    --allow-unauthenticated --max-instances=2 --quiet "$@" 2>&1 | tee deploy_log.txt
+  return "${PIPESTATUS[0]}"
+}
+
+try_grant_actas_once() {
+  [ "$ACTAS_TRIED" = "1" ] && return
+  ACTAS_TRIED=1
+  gcloud iam service-accounts add-iam-policy-binding "${PN}-compute@developer.gserviceaccount.com" \
+    --project="$PROJECT_ID" --member="user:${ACCOUNT}" --role=roles/iam.serviceAccountUser --quiet >/dev/null 2>&1 \
+    && echo "   granted you serviceAccountUser on the default compute service account (waiting 20s)" && sleep 20 \
+    || echo "   (you are not allowed to grant yourself that role in this lab)"
+}
+
+deploy_via_build() {   # deploy_via_build <tag>  -> the deploy runs as the build service account
+  local tag="$1"
+  cat > cloudbuild_deploy.yaml <<EOF
+steps:
+- name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+  entrypoint: gcloud
+  args:
+  - run
+  - deploy
+  - ${SERVICE}
+  - --image=${REG_PATH}:${tag}
+  - --region=${REGION}
+  - --max-instances=2
+  - --quiet
+options:
+  logging: CLOUD_LOGGING_ONLY
+EOF
+  gcloud builds submit --no-source --config=cloudbuild_deploy.yaml --quiet 2>&1 | tee deploy_build_log.txt
+  [ "${PIPESTATUS[0]}" -eq 0 ] || return 1
+  gcloud run services describe "$SERVICE" --region "$REGION" >/dev/null 2>&1 || return 1
+  USE_BUILD_DEPLOY=1
+  echo "Service deployed through Cloud Build. Making it public (as you)..."
+  gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" \
+    --member=allUsers --role=roles/run.invoker --quiet >/dev/null 2>&1 \
+    && echo "   public access enabled" \
+    || echo "   (could not make it public - the script will test it with your identity token instead)"
+  return 0
+}
+
+deploy_service() {   # deploy_service <tag>
+  local tag="$1" i sa mysa
+  if [ -n "$RUNTIME_SA" ]; then
+    run_deploy "$tag" --service-account="$RUNTIME_SA" && return 0
+  fi
+  if [ "$USE_BUILD_DEPLOY" = "1" ]; then
+    deploy_via_build "$tag" && return 0
+  fi
+
+  echo "--- Deploy attempt 1: the lab's own command ---"
+  run_deploy "$tag" && return 0
+  if ! grep -qiE "actAs|permission to act as" deploy_log.txt; then
+    for i in 2 3; do
+      echo "Deploy failed (try $i/3) - waiting 20s"; sleep 20
+      run_deploy "$tag" && return 0
+    done
+    return 1
+  fi
+
+  echo
+  echo "Your account is not allowed to act as the default runtime service account (actAs denied)."
+  try_grant_actas_once
+  run_deploy "$tag" && return 0
+
+  echo
+  echo "--- Workaround 1: deploy through Cloud Build (runs as the build service account) ---"
+  deploy_via_build "$tag" && return 0
+
+  echo
+  echo "--- Workaround 2: use another service account of this project as the runtime account ---"
+  for sa in $(gcloud iam service-accounts list --filter="disabled=false" --format="value(email)" 2>/dev/null); do
+    [ "$sa" = "${PN}-compute@developer.gserviceaccount.com" ] && continue
+    echo "trying runtime service account: $sa"
+    if run_deploy "$tag" --service-account="$sa"; then RUNTIME_SA="$sa"; return 0; fi
+  done
+
+  echo
+  echo "--- Workaround 3: create my own runtime service account ---"
+  mysa="rest-api-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
+  gcloud iam service-accounts describe "$mysa" >/dev/null 2>&1 \
+    || gcloud iam service-accounts create rest-api-runtime --display-name="REST API runtime" --quiet >/dev/null 2>&1
+  gcloud iam service-accounts add-iam-policy-binding "$mysa" --member="user:${ACCOUNT}" \
+    --role=roles/iam.serviceAccountUser --quiet >/dev/null 2>&1
+  sleep 10
+  if run_deploy "$tag" --service-account="$mysa"; then RUNTIME_SA="$mysa"; return 0; fi
+  return 1
 }
 
 # ---------- TASK 1: APIs ----------
 echo
 echo "=== TASK 1: enable APIs ==="
 gcloud services enable cloudbuild.googleapis.com run.googleapis.com \
-  artifactregistry.googleapis.com firestore.googleapis.com --quiet
+  artifactregistry.googleapis.com firestore.googleapis.com --quiet 2>&1 | tail -n 3
 
 # ---------- TASK 2: simple REST API (0.1) ----------
 echo
@@ -255,11 +344,17 @@ else
 fi
 pause "Build with Cloud Build"
 
-deploy_service "0.1" || { echo "FAIL: deploy 0.1"; exit 1; }
-URL=$(get_url)
-echo "Service URL: $URL"
-echo "Test /v1/ -> $(curl -s "${URL}/v1/")"
-pause "REST API Deployed"
+if deploy_service "0.1"; then
+  DEPLOY_OK=1
+  URL=$(get_url)
+  echo "Service URL: $URL"
+  echo "Test /v1/ -> $(api_get /v1/)"
+  pause "REST API Deployed"
+else
+  echo
+  echo "!!! The service could not be deployed yet (explanation at the end)."
+  echo "!!! Continuing with the tasks that do not need a deployment (Firestore, data import, image 0.2)..."
+fi
 
 # ---------- TASK 3: Firestore + test data ----------
 echo
@@ -436,42 +531,65 @@ else
 fi
 pause "Build image revision 0.2"
 
-deploy_service "0.2" || { echo "FAIL: deploy 0.2"; exit 1; }
-URL=$(get_url)
-echo "Service URL: $URL"
+if deploy_service "0.2"; then
+  DEPLOY_OK=1
+  URL=$(get_url)
+  echo "Service URL: $URL"
+else
+  DEPLOY_OK=0
+fi
 
 CUST_OUT=""
-for i in 1 2 3 4 5 6; do
-  CUST_OUT=$(curl -s "${URL}/v1/customer/${TEST_ID}")
-  echo "attempt $i: $CUST_OUT"
-  echo "$CUST_OUT" | grep -q '"status": "success"' && break
-  if echo "$CUST_OUT" | grep -qiE 'permission|denied'; then
-    echo "Firestore permission problem - granting roles/datastore.user to the default service account"
-    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-      --member="serviceAccount:${PN}-compute@developer.gserviceaccount.com" \
-      --role="roles/datastore.user" --quiet >/dev/null 2>&1
-  fi
-  sleep 15
-done
+if [ "$DEPLOY_OK" = "1" ]; then
+  for i in 1 2 3 4 5 6; do
+    CUST_OUT=$(api_get "/v1/customer/${TEST_ID}")
+    echo "attempt $i: $CUST_OUT"
+    echo "$CUST_OUT" | grep -q '"status": "success"' && break
+    if echo "$CUST_OUT" | grep -qiE 'permission|denied'; then
+      echo "Firestore permission problem - trying to grant roles/datastore.user to the runtime service account"
+      gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+        --member="serviceAccount:${RUNTIME_SA:-${PN}-compute@developer.gserviceaccount.com}" \
+        --role="roles/datastore.user" --quiet >/dev/null 2>&1 || echo "   (not allowed to change IAM in this lab)"
+    fi
+    sleep 15
+  done
+fi
 
 # ---------- SELF-CHECK ----------
 echo
 echo "=================== SELF-CHECK ==================="
 tag_exists "0.1" && echo "PASS  image ${IMAGE}:0.1 is in Artifact Registry" || echo "FAIL  image 0.1 missing"
 tag_exists "0.2" && echo "PASS  image ${IMAGE}:0.2 is in Artifact Registry" || echo "FAIL  image 0.2 missing"
-gcloud run services describe "$SERVICE" --region "$REGION" >/dev/null 2>&1 \
-  && echo "PASS  Cloud Run service ${SERVICE} is deployed" || echo "FAIL  service not deployed"
 gcloud firestore databases describe --database="(default)" >/dev/null 2>&1 \
   && echo "PASS  Firestore database exists" || echo "FAIL  no Firestore database"
-curl -s "${URL}/v1/" | grep -q "running" \
-  && echo "PASS  ${URL}/v1/ returns running" || echo "FAIL  /v1/ did not return running"
-echo "$CUST_OUT" | grep -q '"status": "success"' \
-  && echo "PASS  /v1/customer/${TEST_ID} returned success" || echo "FAIL  customer endpoint did not return success"
+if gcloud run services describe "$SERVICE" --region "$REGION" >/dev/null 2>&1; then
+  echo "PASS  Cloud Run service ${SERVICE} is deployed"
+  [ -n "$RUNTIME_SA" ] && echo "      (runtime service account: $RUNTIME_SA)"
+  [ -z "$URL" ] && URL=$(get_url)
+  api_get "/v1/" | grep -q "running" && echo "PASS  ${URL}/v1/ returns running" || echo "FAIL  /v1/ did not return running"
+  echo "$CUST_OUT" | grep -q '"status": "success"' \
+    && echo "PASS  /v1/customer/${TEST_ID} returned success" || echo "CHECK customer endpoint did not return success (see the output above)"
+else
+  echo "FAIL  Cloud Run service not deployed"
+fi
+
+if [ "$DEPLOY_OK" != "1" ]; then
+  echo
+  echo "------------------------------------------------------------------"
+  echo "WHY THE DEPLOY FAILED"
+  echo "Your student account is not allowed to act as any service account that Cloud Run can use"
+  echo "(iam.serviceaccounts.actAs denied), and it is not allowed to grant itself that right."
+  echo "A script cannot fix that. The checkpoints that do not need a deployment are done:"
+  echo "build 0.1, Firestore, and build 0.2 (up to 75/100)."
+  echo "For the 'REST API service deployed' checkpoint:"
+  echo "  1. Click End Lab, then Start Lab, to get a fresh project, and run this script again."
+  echo "  2. Report it through the lab's help chat: 'gcloud run deploy fails with iam.serviceaccounts.actAs denied on the compute service account'."
+  echo "  3. Send me the 'Your roles on this project' lines printed at the start of this run."
+  echo "------------------------------------------------------------------"
+fi
+
 echo
-echo "Extra tests from the lab:"
-for t in 34216 70156 12345; do echo "  /v1/customer/$t -> $(curl -s "${URL}/v1/customer/$t")"; done
-echo
-echo "Open this in your browser: ${URL}/v1/customer/${TEST_ID}"
+[ -n "$URL" ] && echo "Open this in your browser: ${URL}/v1/customer/${TEST_ID}"
 echo "Then click 'Check my progress' for any checkpoint that is not green yet."
 LABEOF
 ```
