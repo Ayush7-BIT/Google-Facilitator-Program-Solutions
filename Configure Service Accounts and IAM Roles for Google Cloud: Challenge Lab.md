@@ -1,48 +1,49 @@
 ```text
-cat > rest_api_lab.sh <<'LABEOF'
+cat > lab5.sh <<'LABEOF'
 #!/bin/bash
-# Developing a REST API with Go and Cloud Run (GSP761) - universal solution (v2: fixes the actAs permission error)
+# Configure Service Accounts and IAM Roles for Google Cloud: Challenge Lab (ARC134) - universal solution
+# Run in Cloud Shell with:  bash lab5.sh
+
+ask() { local r; read -e -r -p "$2 [$3]: " r; printf -v "$1" '%s' "${r:-$3}"; }
+die() { echo; echo "STOP: $1"; exit 1; }
 
 PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
 if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "(unset)" ]; then
-  echo "ERROR: no project set. Run: gcloud config set project <Project ID from the lab panel>"
-  exit 1
+  die "no project set. Run: gcloud config set project <Project ID from the lab panel>"
 fi
-export GOOGLE_CLOUD_PROJECT="$PROJECT_ID"
-ACCOUNT=$(gcloud config get-value account 2>/dev/null)
+export PROJECT_ID
 echo "Project: $PROJECT_ID"
-echo "Account: $ACCOUNT"
 
-ask() {   # ask "prompt" "default" VARNAME
-  local ans
-  read -r -p "$1 [$2]: " ans
-  printf -v "$3" '%s' "${ans:-$2}"
-}
-
-# ---------- detect the lab region ----------
+# ---------- detect region / zone ----------
+meta() { gcloud compute project-info describe --quiet --format="value(commonInstanceMetadata.items[$1])" 2>/dev/null </dev/null; }
 DET_REGION=$(gcloud config get-value compute/region 2>/dev/null)
-if [ -z "$DET_REGION" ] || [ "$DET_REGION" = "(unset)" ]; then
-  DET_REGION=$(gcloud compute project-info describe --quiet \
-    --format="value(commonInstanceMetadata.items[google-compute-default-region])" 2>/dev/null </dev/null)
-fi
-if [ -z "$DET_REGION" ] || [ "$DET_REGION" = "(unset)" ]; then
-  echo "Could not detect the region. Read it from the Lab setup panel and type it at the first prompt."
-  DET_REGION="us-central1"
+[ -z "$DET_REGION" ] || [ "$DET_REGION" = "(unset)" ] && DET_REGION=$(meta google-compute-default-region)
+DET_ZONE=$(gcloud config get-value compute/zone 2>/dev/null)
+[ -z "$DET_ZONE" ] || [ "$DET_ZONE" = "(unset)" ] && DET_ZONE=$(meta google-compute-default-zone)
+if [ -z "$DET_REGION" ]; then
+  echo "Could not detect the region - type the one from the lab text."
+  DET_REGION="us-west1"
 fi
 
 echo
-echo "=== Press ENTER to accept each default (defaults are detected / this lab's values) ==="
-ask "Region (Lab setup panel)                   " "$DET_REGION" REGION
-ask "Distroless base image (Task 2 step 5, after FROM)" "gcr.io/distroless/base-debian12" BASE_IMAGE
-ask "Firestore location                         " "$REGION" FS_LOCATION
-ask "Artifact Registry repo                     " "my-repo" REPO
-ask "Image name                                 " "rest-api" IMAGE
-ask "Cloud Run service name                     " "rest-api" SERVICE
-ask "Customer data folder (Task 3 step 8)       " "gs://spls/gsp645/2019-10-06T20:10:37_43617" SRC_DATA
-ask "Customer bucket                            " "${PROJECT_ID}-customer" CUST_BUCKET
-ask "Test customer ID (Task 7 step 6)           " "22530" TEST_ID
-ask "Pause so you can click 'Check my progress'? (y/n)" "y" PAUSE
-IMPORT_DIR="${SRC_DATA##*/}"
+echo "=== Enter the YELLOW values from the lab text (press Enter to keep the default) ==="
+ask REGION       "Region"                                              "$DET_REGION"
+if [ "$REGION" = "$DET_REGION" ] && [ -n "$DET_ZONE" ]; then ZDEF="$DET_ZONE"; else ZDEF="${REGION}-b"; fi
+ask ZONE         "Zone"                                                "$ZDEF"
+ask SA_NAME      "Task 2: service account name"                        "devops"
+ask VM1          "Task 4: VM name (uses the devops service account)"   "vm-2"
+ask ROLE_ID      "Task 5: custom role name / ID (check the hint box)"  "editor"
+ask ROLE_TITLE   "Task 5: custom role title"                           "Editor"
+ask BQ_SA_NAME   "Task 6: service account name"                        "bigquery-qwiklab"
+ask BQ_VM        "Task 6: VM name"                                     "bigquery-instance"
+ask MACHINE      "Machine type for both VMs"                           "e2-medium"
+ask PAUSE        "Pause so you can click 'Check my progress'? (y/n)"   "y"
+
+SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+BQ_SA_EMAIL="${BQ_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+ROLE_FILE="role-definition.yaml"
+gcloud config set compute/region "$REGION" >/dev/null 2>&1
+gcloud config set compute/zone "$ZONE" >/dev/null 2>&1
 
 pause() {
   if [ "$PAUSE" = "y" ]; then
@@ -50,429 +51,175 @@ pause() {
   fi
 }
 
-REG_PATH="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}"
-PN=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)" 2>/dev/null)
-
-echo
-echo "Your roles on this project (for troubleshooting):"
-gcloud projects get-iam-policy "$PROJECT_ID" --flatten="bindings[].members" \
-  --filter="bindings.members:user:${ACCOUNT}" --format="value(bindings.role)" 2>/dev/null | sed 's/^/   /'
-
-# ---------- helpers ----------
-tag_exists() {
-  gcloud artifacts docker tags list "$REG_PATH" --format="value(tag)" 2>/dev/null | grep -Fq "$1"
-}
-
-check_image() {   # 0 = exists or unknown, 1 = definitely missing (gcr.io only)
-  local img="$1" path code
-  case "$img" in gcr.io/*) ;; *) return 0 ;; esac
-  path="${img#gcr.io/}"; path="${path%%:*}"; path="${path%%@*}"
-  code=$(curl -s -o /dev/null -w "%{http_code}" "https://gcr.io/v2/${path}/tags/list")
-  [ "$code" = "404" ] && return 1
-  return 0
-}
-
-fix_build_permissions() {
-  echo "Granting build/deploy roles to the default service accounts (only done after a failure)..."
-  local sa role
-  for sa in "${PN}-compute@developer.gserviceaccount.com" "${PN}@cloudbuild.gserviceaccount.com"; do
-    for role in roles/artifactregistry.writer roles/storage.objectAdmin roles/logging.logWriter; do
-      gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-        --member="serviceAccount:${sa}" --role="$role" --quiet >/dev/null 2>&1
-    done
+grant() {   # grant <member> <role>
+  local i
+  for i in 1 2 3 4 5 6; do
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="$1" --role="$2" --condition=None >/dev/null 2>&1 && { echo "   granted $2"; return 0; }
+    sleep 8
   done
-  sleep 20
+  echo "   (warning: could not grant $2 to $1)"; return 1
 }
 
-grant_user_role() {   # grant_user_role <role>  -> gives YOUR student account a role on the project
-  local out
-  if out=$(gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="user:${ACCOUNT}" --role="$1" --condition=None 2>&1); then
-    echo "   granted $1 to $ACCOUNT"
-    return 0
-  fi
-  echo "   COULD NOT grant $1 to $ACCOUNT:"
-  echo "$out" | tail -n 3 | sed 's/^/      /'
-  return 1
-}
-
-fix_actas() {   # fix_actas <service account unique id or email taken from the error message>
-  local id="$1" email=""
-  echo "The command needs permission to act as service account: $id"
-  if echo "$id" | grep -q "@"; then
-    email="$id"
-  elif [ -n "$id" ]; then
-    email=$(gcloud iam service-accounts list --project="$PROJECT_ID" --format="value(email,uniqueId)" 2>/dev/null \
-            | awk -v id="$id" '$2==id {print $1}')
-  fi
-  if [ -n "$email" ]; then
-    echo "That service account is: $email"
-    gcloud iam service-accounts add-iam-policy-binding "$email" --project="$PROJECT_ID" \
-      --member="user:${ACCOUNT}" --role=roles/iam.serviceAccountUser --quiet >/dev/null 2>&1 \
-      && echo "   granted serviceAccountUser on $email to $ACCOUNT" \
-      || echo "   (could not grant on the service account itself - trying project level)"
-  fi
-  grant_user_role roles/iam.serviceAccountUser
-  sleep 20
-}
-
-fix_actas_generic() {   # used for Cloud Run deploy errors
-  echo "Granting your account permission to act as the default service accounts..."
-  gcloud iam service-accounts add-iam-policy-binding "${PN}-compute@developer.gserviceaccount.com" \
-    --project="$PROJECT_ID" --member="user:${ACCOUNT}" --role=roles/iam.serviceAccountUser --quiet >/dev/null 2>&1 \
-    && echo "   granted serviceAccountUser on the default compute service account"
-  grant_user_role roles/iam.serviceAccountUser
-  sleep 20
-}
-
-wait_build() {   # wait_build <build id>  -> 0 if the build ends in SUCCESS
-  local id="$1" s i
-  for i in $(seq 1 30); do
-    s=$(gcloud builds describe "$id" --format="value(status)" 2>/dev/null)
-    case "$s" in
-      SUCCESS) return 0 ;;
-      FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) return 1 ;;
-    esac
-    sleep 10
+ssh_retry() {   # ssh_retry <vm> <command>
+  local i
+  for i in 1 2 3 4 5 6 7 8; do
+    if gcloud compute ssh "$1" --zone="$ZONE" --quiet --command="$2"; then return 0; fi
+    echo "   ssh not ready yet (try $i/8) - waiting 20s"; sleep 20
   done
   return 1
 }
 
-docker_fallback_build() {   # last resort: build with Docker in Cloud Shell
-  echo "Last resort: building with Docker in Cloud Shell and pushing to Artifact Registry..."
-  gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet >/dev/null 2>&1
-  docker build -t "${REG_PATH}:$1" . && docker push "${REG_PATH}:$1"
-}
-
-submit_build() {   # submit_build <tag>
-  local tag="$1" i rc id sa
-  for i in 1 2 3 4; do
-    gcloud builds submit --tag "${REG_PATH}:${tag}" --quiet 2>&1 | tee build_log.txt
-    rc=${PIPESTATUS[0]}
-    [ "$rc" -eq 0 ] && return 0
-    echo "Build command failed (try $i/4)."
-    # the build may have started and succeeded even if streaming the log failed
-    id=$(grep -o 'builds/[0-9a-f-]\{36\}' build_log.txt | head -n1 | sed 's#builds/##')
-    if [ -n "$id" ]; then
-      echo "Build $id was created - checking its status..."
-      if wait_build "$id"; then echo "Build succeeded."; return 0; fi
-    fi
-    if grep -q "permission to act as service account" build_log.txt; then
-      sa=$(grep -o 'serviceAccounts/[^ ]*' build_log.txt | head -n1 | sed 's#serviceAccounts/##; s/\.$//')
-      fix_actas "$sa"
-    else
-      fix_build_permissions
-    fi
-    sleep 20
+make_sa() {   # make_sa <name> <email>
+  if gcloud iam service-accounts describe "$2" >/dev/null 2>&1; then
+    echo "service account $1 already exists"
+  else
+    gcloud iam service-accounts create "$1" --display-name="$1" || die "could not create service account $1"
+  fi
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    gcloud iam service-accounts describe "$2" >/dev/null 2>&1 && return 0
+    sleep 5
   done
-  tag_exists "$tag" && return 0
-  docker_fallback_build "$tag"
 }
 
-build_server() {
-  CGO_ENABLED=0 GOOS=linux go build -o server && return 0
-  echo "go build failed - running 'go mod tidy' and retrying"
-  go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o server
-}
-
-deploy_service() {   # deploy_service <tag>
-  local tag="$1" i
-  for i in 1 2 3 4; do
-    gcloud run deploy "$SERVICE" --image "${REG_PATH}:${tag}" \
-      --region "$REGION" --allow-unauthenticated --max-instances=2 --quiet 2>&1 | tee deploy_log.txt
-    [ "${PIPESTATUS[0]}" -eq 0 ] && return 0
-    if grep -qi "actAs\|permission to act as" deploy_log.txt; then fix_actas_generic; fi
-    echo "Deploy failed (try $i/4) - waiting 20s"; sleep 20
-  done
-  return 1
-}
-
-get_url() {
-  gcloud run services describe "$SERVICE" --region "$REGION" --format="value(status.url)" 2>/dev/null
-}
-
-# ---------- TASK 1: APIs ----------
 echo
-echo "=== TASK 1: enable APIs ==="
-gcloud services enable cloudbuild.googleapis.com run.googleapis.com \
-  artifactregistry.googleapis.com firestore.googleapis.com --quiet
+echo "=== Enabling APIs ==="
+gcloud services enable compute.googleapis.com iam.googleapis.com bigquery.googleapis.com \
+  cloudresourcemanager.googleapis.com --quiet
 
-# ---------- TASK 2: simple REST API (0.1) ----------
+# ---------- TASK 2: service account ----------
 echo
-echo "=== TASK 2: REST API v0.1 ==="
-cd "$HOME" || exit 1
-[ -d pet-theory ] || git clone https://github.com/rosera/pet-theory.git
-cd "$HOME/pet-theory/lab08" || { echo "FAIL: pet-theory/lab08 not found"; exit 1; }
+echo "=== Task 2: service account $SA_NAME ==="
+make_sa "$SA_NAME" "$SA_EMAIL"
+pause "Create a service account using gcloud (20)"
 
-# pick a base image that really exists (only replaces yours if it is definitely missing)
-for cand in "$BASE_IMAGE" gcr.io/distroless/base-debian12 gcr.io/distroless/base-debian13 \
-            gcr.io/distroless/base-debian11 gcr.io/distroless/base; do
-  if check_image "$cand"; then BASE_IMAGE="$cand"; break; else echo "Base image not found: $cand - trying the next one"; fi
-done
-echo "Using base image: $BASE_IMAGE"
+# ---------- TASK 3: IAM roles ----------
+echo
+echo "=== Task 3: grant IAM roles to $SA_EMAIL ==="
+export SA="$SA_EMAIL"
+grant "serviceAccount:$SA_EMAIL" roles/iam.serviceAccountUser
+grant "serviceAccount:$SA_EMAIL" roles/compute.instanceAdmin.v1
+grant "serviceAccount:$SA_EMAIL" roles/compute.instanceAdmin
+pause "Grant IAM permissions to service account using gcloud (20)"
 
-cat > main.go <<'GOEOF'
-package main
+# ---------- TASK 4: VM with the service account ----------
+echo
+echo "=== Task 4: VM $VM1 with service account $SA_NAME ==="
+if gcloud compute instances describe "$VM1" --zone="$ZONE" >/dev/null 2>&1; then
+  echo "VM $VM1 already exists"
+else
+  gcloud compute instances create "$VM1" --zone="$ZONE" --machine-type="$MACHINE" \
+    --service-account="$SA_EMAIL" --scopes=cloud-platform || die "could not create $VM1"
+fi
+echo "--- SSH into $VM1 and list instances with the service account's permissions ---"
+ssh_retry "$VM1" "gcloud compute instances list --project=$PROJECT_ID --format='table(name,zone.basename(),status)'" \
+  || echo "(ssh check did not finish - this does not affect the checkpoint)"
+pause "Create a compute instance with service account attached using gcloud (20)"
 
-import (
-    "fmt"
-    "log"
-    "net/http"
-    "os"
-)
-
-func main() {
-    port := os.Getenv("PORT")
-    if port == "" {
-        port = "8080"
-    }
-    http.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
-        fmt.Fprintf(w, "{status: 'running'}")
-    })
-    log.Println("Pets REST API listening on port", port)
-    if err := http.ListenAndServe(":"+port, nil); err != nil {
-        log.Fatalf("Error launching Pets REST API server: %v", err)
-    }
-}
-GOEOF
-
-cat > Dockerfile <<EOF
-FROM ${BASE_IMAGE}
-WORKDIR /usr/src/app
-COPY server .
-CMD [ "/usr/src/app/server" ]
+# ---------- TASK 5: custom role ----------
+echo
+echo "=== Task 5: custom role $ROLE_ID from $ROLE_FILE ==="
+cat > "$ROLE_FILE" <<EOF
+title: "${ROLE_TITLE}"
+description: "Custom role with Cloud SQL connect and get permissions"
+stage: "GA"
+includedPermissions:
+- cloudsql.instances.connect
+- cloudsql.instances.get
 EOF
-
-if ! gcloud artifacts repositories describe "$REPO" --location="$REGION" >/dev/null 2>&1; then
-  gcloud artifacts repositories create "$REPO" --repository-format=docker \
-    --location="$REGION" --description="Docker repository for REST API" --quiet
-fi
-
-if tag_exists "0.1"; then
-  echo "Image 0.1 already exists - skipping build"
+cat "$ROLE_FILE"
+if gcloud iam roles describe "$ROLE_ID" --project="$PROJECT_ID" >/dev/null 2>&1; then
+  echo "role exists - updating it from the file"
+  gcloud iam roles undelete "$ROLE_ID" --project="$PROJECT_ID" --quiet >/dev/null 2>&1 || true
+  gcloud iam roles update "$ROLE_ID" --project="$PROJECT_ID" --file="$ROLE_FILE" --quiet
 else
-  build_server || { echo "FAIL: go build"; exit 1; }
-  submit_build "0.1" || { echo "FAIL: could not build image 0.1"; exit 1; }
+  gcloud iam roles create "$ROLE_ID" --project="$PROJECT_ID" --file="$ROLE_FILE" || die "could not create the role"
 fi
-pause "Build with Cloud Build"
+pause "Create a custom role using a YAML file (20)"
 
-deploy_service "0.1" || { echo "FAIL: deploy 0.1"; exit 1; }
-URL=$(get_url)
-echo "Service URL: $URL"
-echo "Test /v1/ -> $(curl -s "${URL}/v1/")"
-pause "REST API Deployed"
-
-# ---------- TASK 3: Firestore + test data ----------
+# ---------- TASK 6: BigQuery from a service account ----------
 echo
-echo "=== TASK 3: Firestore database and customer data ==="
-if ! gcloud firestore databases describe --database="(default)" >/dev/null 2>&1; then
-  echo "Creating Firestore database in $FS_LOCATION ..."
-  gcloud firestore databases create --database="(default)" --location="$FS_LOCATION" \
-    --type=firestore-native --edition=standard --quiet 2>/dev/null \
-  || gcloud firestore databases create --database="(default)" --location="$FS_LOCATION" \
-    --type=firestore-native --quiet
-fi
-for i in $(seq 1 18); do
-  gcloud firestore databases describe --database="(default)" >/dev/null 2>&1 && break
-  echo "waiting for Firestore ($i/18)..."; sleep 10
-done
-if gcloud firestore databases describe --database="(default)" >/dev/null 2>&1; then
-  echo "Firestore database is ready."
+echo "=== Task 6: service account $BQ_SA_NAME + VM $BQ_VM + query ==="
+make_sa "$BQ_SA_NAME" "$BQ_SA_EMAIL"
+grant "serviceAccount:$BQ_SA_EMAIL" roles/bigquery.dataViewer
+grant "serviceAccount:$BQ_SA_EMAIL" roles/bigquery.user
+
+if gcloud compute instances describe "$BQ_VM" --zone="$ZONE" >/dev/null 2>&1; then
+  echo "VM $BQ_VM already exists"
 else
-  echo "FAIL: Firestore was not created. Create it by hand: Navigation menu > Firestore > Create database > Standard > Open > Region ${FS_LOCATION}"
+  gcloud compute instances create "$BQ_VM" --zone="$ZONE" --machine-type="$MACHINE" \
+    --service-account="$BQ_SA_EMAIL" --scopes=cloud-platform || die "could not create $BQ_VM"
 fi
-pause "Firestore database created"
 
-if ! gcloud storage buckets describe "gs://${CUST_BUCKET}" >/dev/null 2>&1; then
-  gcloud storage buckets create "gs://${CUST_BUCKET}" --default-storage-class=standard \
-    --location="$FS_LOCATION" --quiet
-fi
-gcloud storage cp -r "$SRC_DATA" "gs://${CUST_BUCKET}" --quiet
-gcloud firestore import "gs://${CUST_BUCKET}/${IMPORT_DIR}/" --quiet \
-  || gcloud beta firestore import "gs://${CUST_BUCKET}/${IMPORT_DIR}/" --quiet
+cat > query.py <<'PYEOF'
+from google.auth import compute_engine
+from google.cloud import bigquery
+credentials = compute_engine.Credentials(
+    service_account_email='YOUR_SERVICE_ACCOUNT')
+query = '''
+SELECT name, SUM(number) as total_people
+FROM `bigquery-public-data.usa_names.usa_1910_2013`
+WHERE state = 'TX'
+GROUP BY name, state
+ORDER BY total_people DESC
+LIMIT 20
+'''
+client = bigquery.Client(
+    project='YOUR_PROJECT_ID',
+    credentials=credentials)
+print(client.query(query).to_dataframe())
+PYEOF
+sed -i "s/YOUR_SERVICE_ACCOUNT/${BQ_SA_EMAIL}/; s/YOUR_PROJECT_ID/${PROJECT_ID}/" query.py
 
-# ---------- TASK 4 + 7: connect to Firestore, build 0.2, deploy ----------
-echo
-echo "=== TASK 4 + 7: Firestore-connected API (0.2) ==="
-cat > main.go <<'GOEOF'
-package main
-
-import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "log"
-    "net/http"
-    "os"
-
-    "cloud.google.com/go/firestore"
-    "github.com/gorilla/handlers"
-    "github.com/gorilla/mux"
-    "google.golang.org/api/iterator"
-)
-
-var client *firestore.Client
-
-func main() {
-    var err error
-    ctx := context.Background()
-    client, err = firestore.NewClient(ctx, "__PROJECT_ID__")
-    if err != nil {
-        log.Fatalf("Error initializing Cloud Firestore client: %v", err)
-    }
-    port := os.Getenv("PORT")
-    if port == "" {
-        port = "8080"
-    }
-    r := mux.NewRouter()
-    r.HandleFunc("/v1/", rootHandler)
-    r.HandleFunc("/v1/customer/{id}", customerHandler)
-    log.Println("Pets REST API listening on port", port)
-    cors := handlers.CORS(
-        handlers.AllowedHeaders([]string{"X-Requested-With", "Authorization", "Origin"}),
-        handlers.AllowedOrigins([]string{"https://storage.googleapis.com"}),
-        handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "OPTIONS", "PATCH", "CONNECT"}),
-    )
-    if err := http.ListenAndServe(":"+port, cors(r)); err != nil {
-        log.Fatalf("Error launching Pets REST API server: %v", err)
-    }
-}
-
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-    fmt.Fprintf(w, "{status: 'running'}")
-}
-
-func customerHandler(w http.ResponseWriter, r *http.Request) {
-    id := mux.Vars(r)["id"]
-    ctx := context.Background()
-    customer, err := getCustomer(ctx, id)
-    if err != nil {
-        w.WriteHeader(http.StatusInternalServerError)
-        fmt.Fprintf(w, `{"status": "fail", "data": '%s'}`, err)
-        return
-    }
-    if customer == nil {
-        w.WriteHeader(http.StatusNotFound)
-        msg := fmt.Sprintf("`Customer \"%s\" not found`", id)
-        fmt.Fprintf(w, fmt.Sprintf(`{"status": "fail", "data": {"title": %s}}`, msg))
-        return
-    }
-    amount, err := getAmounts(ctx, customer)
-    if err != nil {
-        w.WriteHeader(http.StatusInternalServerError)
-        fmt.Fprintf(w, `{"status": "fail", "data": "Unable to fetch amounts: %s"}`, err)
-        return
-    }
-    data, err := json.Marshal(amount)
-    if err != nil {
-        w.WriteHeader(http.StatusInternalServerError)
-        fmt.Fprintf(w, `{"status": "fail", "data": "Unable to fetch amounts: %s"}`, err)
-        return
-    }
-    fmt.Fprintf(w, fmt.Sprintf(`{"status": "success", "data": %s}`, data))
-}
-
-type Customer struct {
-    Email string `firestore:"email"`
-    ID    string `firestore:"id"`
-    Name  string `firestore:"name"`
-    Phone string `firestore:"phone"`
-}
-
-func getCustomer(ctx context.Context, id string) (*Customer, error) {
-    query := client.Collection("customers").Where("id", "==", id)
-    iter := query.Documents(ctx)
-    var c Customer
-    for {
-        doc, err := iter.Next()
-        if err == iterator.Done {
-            break
-        }
-        if err != nil {
-            return nil, err
-        }
-        err = doc.DataTo(&c)
-        if err != nil {
-            return nil, err
-        }
-    }
-    return &c, nil
-}
-
-func getAmounts(ctx context.Context, c *Customer) (map[string]int64, error) {
-    if c == nil {
-        return map[string]int64{}, fmt.Errorf("Customer should be non-nil: %v", c)
-    }
-    result := map[string]int64{
-        "proposed": 0,
-        "approved": 0,
-        "rejected": 0,
-    }
-    query := client.Collection(fmt.Sprintf("customers/%s/treatments", c.Email))
-    if query == nil {
-        return map[string]int64{}, fmt.Errorf("Query is nil: %v", c)
-    }
-    iter := query.Documents(ctx)
-    for {
-        doc, err := iter.Next()
-        if err == iterator.Done {
-            break
-        }
-        if err != nil {
-            return nil, err
-        }
-        treatment := doc.Data()
-        result[treatment["status"].(string)] += treatment["cost"].(int64)
-    }
-    return result, nil
-}
-GOEOF
-sed -i "s/__PROJECT_ID__/${PROJECT_ID}/" main.go
-
-if tag_exists "0.2"; then
-  echo "Image 0.2 already exists - skipping build"
-else
-  build_server || { echo "FAIL: go build"; exit 1; }
-  submit_build "0.2" || { echo "FAIL: could not build image 0.2"; exit 1; }
-fi
-pause "Build image revision 0.2"
-
-deploy_service "0.2" || { echo "FAIL: deploy 0.2"; exit 1; }
-URL=$(get_url)
-echo "Service URL: $URL"
-
-CUST_OUT=""
-for i in 1 2 3 4 5 6; do
-  CUST_OUT=$(curl -s "${URL}/v1/customer/${TEST_ID}")
-  echo "attempt $i: $CUST_OUT"
-  echo "$CUST_OUT" | grep -q '"status": "success"' && break
-  if echo "$CUST_OUT" | grep -qiE 'permission|denied'; then
-    echo "Firestore permission problem - granting roles/datastore.user to the default service account"
-    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-      --member="serviceAccount:${PN}-compute@developer.gserviceaccount.com" \
-      --role="roles/datastore.user" --quiet >/dev/null 2>&1
-  fi
-  sleep 15
+cat > remote_bq.sh <<'REMOTEEOF'
+sudo apt-get update -y
+sudo apt-get install -y python3-pip python3-venv git
+python3 -m venv myvenv
+source myvenv/bin/activate
+pip3 install --upgrade pip
+pip3 install google-cloud-bigquery pyarrow pandas db-dtypes
+for i in 1 2 3 4 5; do
+  python3 query.py && break
+  echo "query failed (try $i/5) - the role may still be spreading, waiting 30s"
+  sleep 30
 done
+REMOTEEOF
+
+echo "--- copying files to $BQ_VM (waits for the VM to accept SSH) ---"
+copied=0
+for i in 1 2 3 4 5 6 7 8; do
+  if gcloud compute scp query.py remote_bq.sh "${BQ_VM}:~" --zone="$ZONE" --quiet; then copied=1; break; fi
+  echo "   not ready yet (try $i/8) - waiting 20s"; sleep 20
+done
+[ "$copied" = 1 ] || die "could not copy files to $BQ_VM over SSH"
+echo "--- installing dependencies and running query.py on $BQ_VM (a few minutes) ---"
+gcloud compute ssh "$BQ_VM" --zone="$ZONE" --quiet --command="bash remote_bq.sh" 2>&1 | tee bq_output.txt
+pause "Use the client libraries to access BigQuery from a service account (20)"
 
 # ---------- SELF-CHECK ----------
 echo
 echo "=================== SELF-CHECK ==================="
-tag_exists "0.1" && echo "PASS  image ${IMAGE}:0.1 is in Artifact Registry" || echo "FAIL  image 0.1 missing"
-tag_exists "0.2" && echo "PASS  image ${IMAGE}:0.2 is in Artifact Registry" || echo "FAIL  image 0.2 missing"
-gcloud run services describe "$SERVICE" --region "$REGION" >/dev/null 2>&1 \
-  && echo "PASS  Cloud Run service ${SERVICE} is deployed" || echo "FAIL  service not deployed"
-gcloud firestore databases describe --database="(default)" >/dev/null 2>&1 \
-  && echo "PASS  Firestore database exists" || echo "FAIL  no Firestore database"
-curl -s "${URL}/v1/" | grep -q "running" \
-  && echo "PASS  ${URL}/v1/ returns running" || echo "FAIL  /v1/ did not return running"
-echo "$CUST_OUT" | grep -q '"status": "success"' \
-  && echo "PASS  /v1/customer/${TEST_ID} returned success" || echo "FAIL  customer endpoint did not return success"
+ok()  { echo "  PASS  $1"; }
+bad() { echo "  FAIL  $1"; }
+roles_of() { gcloud projects get-iam-policy "$PROJECT_ID" --flatten="bindings[].members" --filter="bindings.members:serviceAccount:$1" --format="value(bindings.role)" 2>/dev/null; }
+
+gcloud iam service-accounts describe "$SA_EMAIL" >/dev/null 2>&1 && ok "Task 2: service account $SA_NAME exists" || bad "Task 2: service account missing"
+R1=$(roles_of "$SA_EMAIL")
+echo "$R1" | grep -q "roles/iam.serviceAccountUser" && ok "Task 3: $SA_NAME has iam.serviceAccountUser" || bad "Task 3: serviceAccountUser missing"
+echo "$R1" | grep -q "roles/compute.instanceAdmin" && ok "Task 3: $SA_NAME has compute.instanceAdmin" || bad "Task 3: compute.instanceAdmin missing"
+[ "$(gcloud compute instances describe "$VM1" --zone="$ZONE" --format='value(serviceAccounts[0].email)' 2>/dev/null)" = "$SA_EMAIL" ] \
+  && ok "Task 4: $VM1 runs as $SA_NAME" || bad "Task 4: $VM1 missing or wrong service account"
+PERMS=$(gcloud iam roles describe "$ROLE_ID" --project="$PROJECT_ID" --format="value(includedPermissions)" 2>/dev/null)
+echo "$PERMS" | grep -q "cloudsql.instances.connect" && echo "$PERMS" | grep -q "cloudsql.instances.get" \
+  && ok "Task 5: custom role $ROLE_ID has both Cloud SQL permissions" || bad "Task 5: custom role missing or incomplete"
+R2=$(roles_of "$BQ_SA_EMAIL")
+echo "$R2" | grep -q "roles/bigquery.dataViewer" && echo "$R2" | grep -q "roles/bigquery.user" \
+  && ok "Task 6: $BQ_SA_NAME has BigQuery Data Viewer + User" || bad "Task 6: BigQuery roles missing"
+[ "$(gcloud compute instances describe "$BQ_VM" --zone="$ZONE" --format='value(serviceAccounts[0].email)' 2>/dev/null)" = "$BQ_SA_EMAIL" ] \
+  && ok "Task 6: $BQ_VM runs as $BQ_SA_NAME" || bad "Task 6: $BQ_VM missing or wrong service account"
+grep -q "total_people" bq_output.txt 2>/dev/null && ok "Task 6: query.py printed the BigQuery results" || bad "Task 6: query output not found (see bq_output.txt)"
 echo
-echo "Extra tests from the lab:"
-for t in 34216 70156 12345; do echo "  /v1/customer/$t -> $(curl -s "${URL}/v1/customer/$t")"; done
-echo
-echo "Open this in your browser: ${URL}/v1/customer/${TEST_ID}"
-echo "Then click 'Check my progress' for any checkpoint that is not green yet."
+echo ">>> Done. Click 'Check my progress' for any of the 5 checkpoints that is not green yet."
 LABEOF
 ```
 
