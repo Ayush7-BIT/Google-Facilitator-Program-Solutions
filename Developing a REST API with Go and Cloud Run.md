@@ -1,7 +1,7 @@
 ```/text
 cat > rest_api_lab.sh <<'LABEOF'
 #!/bin/bash
-# Developing a REST API with Go and Cloud Run (GSP761) - universal solution
+# Developing a REST API with Go and Cloud Run (GSP761) - universal solution (v2: fixes the actAs permission error)
 
 PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
 if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "(unset)" ]; then
@@ -9,7 +9,9 @@ if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "(unset)" ]; then
   exit 1
 fi
 export GOOGLE_CLOUD_PROJECT="$PROJECT_ID"
+ACCOUNT=$(gcloud config get-value account 2>/dev/null)
 echo "Project: $PROJECT_ID"
+echo "Account: $ACCOUNT"
 
 ask() {   # ask "prompt" "default" VARNAME
   local ans
@@ -49,6 +51,12 @@ pause() {
 }
 
 REG_PATH="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE}"
+PN=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)" 2>/dev/null)
+
+echo
+echo "Your roles on this project (for troubleshooting):"
+gcloud projects get-iam-policy "$PROJECT_ID" --flatten="bindings[].members" \
+  --filter="bindings.members:user:${ACCOUNT}" --format="value(bindings.role)" 2>/dev/null | sed 's/^/   /'
 
 # ---------- helpers ----------
 tag_exists() {
@@ -66,9 +74,8 @@ check_image() {   # 0 = exists or unknown, 1 = definitely missing (gcr.io only)
 
 fix_build_permissions() {
   echo "Granting build/deploy roles to the default service accounts (only done after a failure)..."
-  local pn sa role
-  pn=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
-  for sa in "${pn}-compute@developer.gserviceaccount.com" "${pn}@cloudbuild.gserviceaccount.com"; do
+  local sa role
+  for sa in "${PN}-compute@developer.gserviceaccount.com" "${PN}@cloudbuild.gserviceaccount.com"; do
     for role in roles/artifactregistry.writer roles/storage.objectAdmin roles/logging.logWriter; do
       gcloud projects add-iam-policy-binding "$PROJECT_ID" \
         --member="serviceAccount:${sa}" --role="$role" --quiet >/dev/null 2>&1
@@ -77,15 +84,88 @@ fix_build_permissions() {
   sleep 20
 }
 
-submit_build() {   # tag
-  local tag="$1" i
-  for i in 1 2 3; do
-    if gcloud builds submit --tag "${REG_PATH}:${tag}" --quiet; then return 0; fi
-    echo "Build failed (try $i/3)."
-    [ "$i" -eq 1 ] && fix_build_permissions
-    sleep 15
+grant_user_role() {   # grant_user_role <role>  -> gives YOUR student account a role on the project
+  local out
+  if out=$(gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="user:${ACCOUNT}" --role="$1" --condition=None 2>&1); then
+    echo "   granted $1 to $ACCOUNT"
+    return 0
+  fi
+  echo "   COULD NOT grant $1 to $ACCOUNT:"
+  echo "$out" | tail -n 3 | sed 's/^/      /'
+  return 1
+}
+
+fix_actas() {   # fix_actas <service account unique id or email taken from the error message>
+  local id="$1" email=""
+  echo "The command needs permission to act as service account: $id"
+  if echo "$id" | grep -q "@"; then
+    email="$id"
+  elif [ -n "$id" ]; then
+    email=$(gcloud iam service-accounts list --project="$PROJECT_ID" --format="value(email,uniqueId)" 2>/dev/null \
+            | awk -v id="$id" '$2==id {print $1}')
+  fi
+  if [ -n "$email" ]; then
+    echo "That service account is: $email"
+    gcloud iam service-accounts add-iam-policy-binding "$email" --project="$PROJECT_ID" \
+      --member="user:${ACCOUNT}" --role=roles/iam.serviceAccountUser --quiet >/dev/null 2>&1 \
+      && echo "   granted serviceAccountUser on $email to $ACCOUNT" \
+      || echo "   (could not grant on the service account itself - trying project level)"
+  fi
+  grant_user_role roles/iam.serviceAccountUser
+  sleep 20
+}
+
+fix_actas_generic() {   # used for Cloud Run deploy errors
+  echo "Granting your account permission to act as the default service accounts..."
+  gcloud iam service-accounts add-iam-policy-binding "${PN}-compute@developer.gserviceaccount.com" \
+    --project="$PROJECT_ID" --member="user:${ACCOUNT}" --role=roles/iam.serviceAccountUser --quiet >/dev/null 2>&1 \
+    && echo "   granted serviceAccountUser on the default compute service account"
+  grant_user_role roles/iam.serviceAccountUser
+  sleep 20
+}
+
+wait_build() {   # wait_build <build id>  -> 0 if the build ends in SUCCESS
+  local id="$1" s i
+  for i in $(seq 1 30); do
+    s=$(gcloud builds describe "$id" --format="value(status)" 2>/dev/null)
+    case "$s" in
+      SUCCESS) return 0 ;;
+      FAILURE|CANCELLED|TIMEOUT|INTERNAL_ERROR|EXPIRED) return 1 ;;
+    esac
+    sleep 10
   done
   return 1
+}
+
+docker_fallback_build() {   # last resort: build with Docker in Cloud Shell
+  echo "Last resort: building with Docker in Cloud Shell and pushing to Artifact Registry..."
+  gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet >/dev/null 2>&1
+  docker build -t "${REG_PATH}:$1" . && docker push "${REG_PATH}:$1"
+}
+
+submit_build() {   # submit_build <tag>
+  local tag="$1" i rc id sa
+  for i in 1 2 3 4; do
+    gcloud builds submit --tag "${REG_PATH}:${tag}" --quiet 2>&1 | tee build_log.txt
+    rc=${PIPESTATUS[0]}
+    [ "$rc" -eq 0 ] && return 0
+    echo "Build command failed (try $i/4)."
+    # the build may have started and succeeded even if streaming the log failed
+    id=$(grep -o 'builds/[0-9a-f-]\{36\}' build_log.txt | head -n1 | sed 's#builds/##')
+    if [ -n "$id" ]; then
+      echo "Build $id was created - checking its status..."
+      if wait_build "$id"; then echo "Build succeeded."; return 0; fi
+    fi
+    if grep -q "permission to act as service account" build_log.txt; then
+      sa=$(grep -o 'serviceAccounts/[^ ]*' build_log.txt | head -n1 | sed 's#serviceAccounts/##; s/\.$//')
+      fix_actas "$sa"
+    else
+      fix_build_permissions
+    fi
+    sleep 20
+  done
+  tag_exists "$tag" && return 0
+  docker_fallback_build "$tag"
 }
 
 build_server() {
@@ -94,14 +174,14 @@ build_server() {
   go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o server
 }
 
-deploy_service() {   # tag
+deploy_service() {   # deploy_service <tag>
   local tag="$1" i
-  for i in 1 2 3; do
-    if gcloud run deploy "$SERVICE" --image "${REG_PATH}:${tag}" \
-        --region "$REGION" --allow-unauthenticated --max-instances=2 --quiet; then
-      return 0
-    fi
-    echo "Deploy failed (try $i/3) - waiting 20s"; sleep 20
+  for i in 1 2 3 4; do
+    gcloud run deploy "$SERVICE" --image "${REG_PATH}:${tag}" \
+      --region "$REGION" --allow-unauthenticated --max-instances=2 --quiet 2>&1 | tee deploy_log.txt
+    [ "${PIPESTATUS[0]}" -eq 0 ] && return 0
+    if grep -qi "actAs\|permission to act as" deploy_log.txt; then fix_actas_generic; fi
+    echo "Deploy failed (try $i/4) - waiting 20s"; sleep 20
   done
   return 1
 }
@@ -367,9 +447,8 @@ for i in 1 2 3 4 5 6; do
   echo "$CUST_OUT" | grep -q '"status": "success"' && break
   if echo "$CUST_OUT" | grep -qiE 'permission|denied'; then
     echo "Firestore permission problem - granting roles/datastore.user to the default service account"
-    pn=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
     gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-      --member="serviceAccount:${pn}-compute@developer.gserviceaccount.com" \
+      --member="serviceAccount:${PN}-compute@developer.gserviceaccount.com" \
       --role="roles/datastore.user" --quiet >/dev/null 2>&1
   fi
   sleep 15
