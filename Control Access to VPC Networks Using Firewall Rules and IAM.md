@@ -4,6 +4,7 @@ cat > fw_iam_lab.sh <<'LABEOF'
 # Control Access to VPC Networks Using Firewall Rules and IAM (GSP213) - universal solution
 # Run in Cloud Shell:  bash fw_iam_lab.sh
 # Safe to re-run: anything that already exists is skipped.
+# All 6 graded checkpoints can be clicked at the pause OR at the very end (the firewall rule is restored at the end).
 
 SCRIPT_PATH=$(readlink -f "$0")
 
@@ -123,7 +124,7 @@ echo
 echo ">>> Lab page: click 'Check my progress' for ALL 6 checkpoints now:"
 echo "      Create the blue server / Create the green server / Install Nginx and customize the welcome page"
 echo "      Create the tagged firewall rule / Create a test-vm / Create a Network-admin service account"
-read -r -p ">>> Press ENTER only after all 6 are green (the next part deletes the firewall rule) " _
+read -r -p ">>> Press ENTER to continue (the next, ungraded part deletes the rule for a demo - it is re-created at the end) " _
 
 # ---------- TASK 3 (not graded): test as network-admin, then Security Admin can delete ----------
 echo; echo "=== TASK 3b: act as network-admin: list works, delete is denied ==="
@@ -139,6 +140,8 @@ fi
 if [ "$activated" = 1 ]; then
   echo "   now acting as $SA"
   gcloud compute firewall-rules list </dev/null
+  echo "   NOTE: the next delete is SUPPOSED to fail with a red 'ERROR ... compute.firewalls.delete' -"
+  echo "         that is the lab's demo: Compute Network Admin may not delete firewall rules."
   gcloud compute firewall-rules delete allow-http-web-server --quiet </dev/null \
     && echo "   (unexpected: delete worked)" || echo "   delete denied - expected for Compute Network Admin"
   restore_account
@@ -163,9 +166,27 @@ else
   echo "   Could not create a key for the service account (this part is not graded) - skipping it."
 fi
 
+# ---------- restore the graded firewall rule (the demo above deletes it) ----------
+restore_account
+echo; echo "=== Restoring allow-http-web-server so the 'Create the tagged firewall rule' checkpoint passes ==="
+have_fw allow-http-web-server && skip allow-http-web-server || \
+  gcloud compute firewall-rules create allow-http-web-server --network=default --direction=INGRESS \
+    --action=ALLOW --rules=tcp:80,icmp --target-tags=web-server --source-ranges=0.0.0.0/0 </dev/null \
+    || fail "could not re-create allow-http-web-server"
+
+echo
+echo "=================== SELF-CHECK ==================="
+ok()  { echo "  PASS  $1"; }
+bad() { echo "  FAIL  $1"; }
+for v in blue green test-vm; do have_vm "$v" && ok "VM $v" || bad "VM $v missing"; done
+gcloud compute instances describe blue --zone="$ZONE" --format="value(tags.items)" </dev/null 2>/dev/null | grep -q web-server \
+  && ok "blue has tag web-server" || bad "blue is missing tag web-server"
+FW=$(gcloud compute firewall-rules describe allow-http-web-server --format=json 2>/dev/null </dev/null)
+echo "$FW" | grep -q '"web-server"' && echo "$FW" | grep -q '"80"' && ok "firewall rule allow-http-web-server (tcp:80, icmp -> web-server)" || bad "firewall rule allow-http-web-server"
+gcloud iam service-accounts describe "$SA" >/dev/null 2>&1 </dev/null && ok "service account network-admin" || bad "service account network-admin missing"
 echo
 echo "Active account is back to: $(gcloud config get-value account 2>/dev/null)"
-echo ">>> Done. All 6 checkpoints should already be green on the lab page."
+echo ">>> Done. Click 'Check my progress' for any of the 6 checkpoints that is not green yet - all of them pass now."
 LABEOF
 ```
 
