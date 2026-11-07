@@ -17,7 +17,7 @@ echo "Project: $PROJECT_ID"
 
 WORKDIR="$HOME/tf-iac-lab"
 mkdir -p "$WORKDIR"
-VARS_FILE="$WORKDIR/.lab_vars"
+VARS_FILE="$WORKDIR/.lab_vars2"   # (older .lab_vars answers are ignored)
 PROGRESS_FILE="$WORKDIR/.lab_done"
 [ -f "$VARS_FILE" ] && . "$VARS_FILE"
 DONE=$(cat "$PROGRESS_FILE" 2>/dev/null)
@@ -62,27 +62,30 @@ if ! find_tf; then
     && unzip -o -q /tmp/terraform.zip -d "$HOME/bin" && chmod +x "$HOME/bin/terraform"
 fi
 find_tf || fail "Terraform could not be installed - run the install commands from the lab's Prerequisites section, then re-run this script"
-terraform() { "$TF" "$@"; }   # every terraform call below uses the real binary
+# The lab pins Google provider 3.5.0, which cannot read Cloud Shell's built-in credentials
+# ("invalid token JSON from metadata"). Give it a fresh access token on every call instead.
+terraform() { GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token 2>/dev/null </dev/null)" "$TF" "$@"; }
 echo "Using $TF: $(terraform version | head -n 1)"
 
-# ---------- detect region and zone ----------
+# ---------- detect the zone (region is taken from it) ----------
 meta() { gcloud compute project-info describe --quiet --format="value(commonInstanceMetadata.items[$1])" 2>/dev/null </dev/null; }
-DET_ZONE=$(gcloud config get-value compute/zone 2>/dev/null)
-if [ -z "$DET_ZONE" ] || [ "$DET_ZONE" = "(unset)" ]; then DET_ZONE=$(meta google-compute-default-zone); fi
-DET_REGION=$(gcloud config get-value compute/region 2>/dev/null)
-if [ -z "$DET_REGION" ] || [ "$DET_REGION" = "(unset)" ]; then DET_REGION=$(meta google-compute-default-region); fi
-if [ -z "$DET_REGION" ] && [ -n "$DET_ZONE" ]; then DET_REGION="${DET_ZONE%-*}"; fi
-[ -z "$DET_REGION" ] && echo "Could not detect the region/zone - type the ones from the lab text."
+DET_ZONE=$(meta google-compute-default-zone)
+if [ -z "$DET_ZONE" ]; then DET_ZONE=$(gcloud config get-value compute/zone 2>/dev/null); fi
+[ "$DET_ZONE" = "(unset)" ] && DET_ZONE=""
+IMAGE="debian-cloud/debian-12"
 
 echo
-echo "=== Copy each value from the lab text (yellow), or press ENTER to accept the default ==="
-ask "Region     -> Task 1, step 1 (provider block, 'region = ...')   " "${REGION:-${DET_REGION:-us-central1}}" REGION
-ZDEF="${ZONE:-$DET_ZONE}"
-case "$ZDEF" in "${REGION}"-*) ;; *) ZDEF="${REGION}-a" ;; esac
-ask "Zone       -> Task 1, step 1 (provider block, 'zone = ...')     " "$ZDEF" ZONE
-case "$ZONE" in "${REGION}"-*) ;; *) echo "WARNING: zone $ZONE is not in region $REGION - check the lab text" ;; esac
-ask "Image      -> Task 2, step 1 (boot_disk 'image = ...')          " "${IMAGE:-debian-cloud/debian-12}" IMAGE
-{ for v in REGION ZONE IMAGE; do printf '%s=%q\n' "$v" "${!v}"; done; } > "$VARS_FILE"
+echo "=== The only yellow value in this lab is the zone/region in Task 1 (the provider block) ==="
+while :; do
+  read -r -p "Zone -> Task 1, provider block 'zone = ...' (e.g. us-east1-b) [${ZONE:-$DET_ZONE}]: " ans
+  ZONE=$(echo "${ans:-${ZONE:-$DET_ZONE}}" | xargs)
+  if echo "$ZONE" | grep -Eq '^[a-z]+-[a-z]+[0-9]+-[a-z]$'; then break; fi
+  echo "   Please type the zone exactly as shown in yellow in Task 1 (format like us-east1-b)."
+  ZONE=""
+done
+REGION="${ZONE%-*}"
+echo "   Region: $REGION   (taken from the zone)"
+{ for v in REGION ZONE; do printf '%s=%q\n' "$v" "${!v}"; done; } > "$VARS_FILE"
 echo "Bucket name (Task 3): $PROJECT_ID  (the lab uses your Project ID)"
 
 gcloud config set compute/region "$REGION" >/dev/null 2>&1
@@ -239,7 +242,7 @@ if [ "$DONE" -lt 3 ]; then
   echo; echo "=== TASK 2c: change boot image to cos-cloud/cos-stable (instance is recreated) ==="
   COS=1; write_main
   tf_apply
-  terraform show -no-color | grep -m 3 -E 'image|name ' 
+  terraform show -no-color | grep -m 3 -E 'image|name '
   mark 3
   pause "Make destructive changes (20)"
 fi
