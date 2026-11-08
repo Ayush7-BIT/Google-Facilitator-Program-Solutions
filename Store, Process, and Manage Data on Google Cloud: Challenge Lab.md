@@ -196,20 +196,29 @@ sed -i "s/TOPIC_NAME_PLACEHOLDER/${TOPIC}/; s/FUNCTION_NAME_PLACEHOLDER/${FUNCTI
 grep -n "topicName =\|cloudEvent('" index.js
 
 deployed=0
-for i in 1 2 3 4; do
+for i in 1 2 3 4 5 6; do
   echo "--- deploy attempt $i (the build takes a few minutes) ---"
-  if gcloud functions deploy "$FUNCTION" --gen2 --runtime="$RUNTIME" --region="$REGION" \
+  gcloud functions deploy "$FUNCTION" --gen2 --runtime="$RUNTIME" --region="$REGION" \
        --source=. --entry-point="$FUNCTION" --memory=512MiB \
        --trigger-event-filters="type=google.cloud.storage.object.v1.finalized" \
        --trigger-event-filters="bucket=$BUCKET" \
-       --trigger-location="$REGION" --quiet; then
-    deployed=1; break
-  fi
+       --trigger-location="$REGION" --quiet 2>&1 | tee ~/deploy_attempt.log
+  if [ "${PIPESTATUS[0]}" = 0 ]; then deployed=1; break; fi
   echo
-  echo "   ^^^ Attempt $i failed. This is expected and retried automatically:"
-  echo "       - 'Permission denied ... Eventarc Service Agent' = Google is still applying permissions"
-  echo "       - 'npm error ... sharp' = a temporary build glitch"
-  echo "   Waiting 60s and trying again..."; sleep 60
+  if grep -q "node_modules/sharp" ~/deploy_attempt.log && grep -qF '"sharp": "^0.32.1"' package.json; then
+    # sharp 0.32.x downloads libvips from GitHub during the build; when GitHub is flaky
+    # (e.g. "502 Bad Gateway") it fails every time. sharp 0.33.x installs libvips from
+    # the npm registry instead. Same API, so index.js stays exactly as the lab gives it.
+    echo "   ^^^ Attempt $i failed: sharp 0.32.1 could not download its image library from GitHub."
+    echo "   Switching package.json to sharp ^0.33.5 (same code, installs from npm instead of GitHub)."
+    sed -i 's/"sharp": "^0.32.1"/"sharp": "^0.33.5"/' package.json
+    grep -n '"sharp"' package.json
+    echo "   Retrying in 10s..."; sleep 10
+  else
+    echo "   ^^^ Attempt $i failed. 'Permission denied ... Eventarc Service Agent' is expected:"
+    echo "       Google is still applying the new permissions. Waiting 60s and trying again..."
+    sleep 60
+  fi
 done
 [ "$deployed" = 1 ] || die "the function did not deploy. Send me the error above."
 echo "function deployed; waiting 60s for the Eventarc trigger to become ready..."
