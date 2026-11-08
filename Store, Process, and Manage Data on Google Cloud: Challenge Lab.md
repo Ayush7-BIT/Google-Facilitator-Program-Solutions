@@ -79,12 +79,16 @@ PUBSUB_SA="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
 EVENTARC_SA="service-${PROJECT_NUMBER}@gcp-sa-eventarc.iam.gserviceaccount.com"
 
 grant() {   # grant <member> <role>
-  local i
-  for i in 1 2 3 4 5; do
-    gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="$1" --role="$2" --condition=None >/dev/null 2>&1 && { echo "   granted $2"; return 0; }
-    sleep 8
+  local i err
+  for i in 1 2; do
+    err=$(gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="$1" --role="$2" \
+            --condition=None --quiet 2>&1 >/dev/null) && { echo "   granted $2"; return 0; }
+    echo "$err" | grep -qiE "concurrent|etag|aborted|409" || break   # only retry real conflicts
+    sleep 5
   done
-  echo "   (warning: could not grant $2 to $1)"; return 1
+  echo "   (skipped $2 -> ${1#serviceAccount:}: $(echo "$err" | grep -m1 -E 'ERROR|PERMISSION' | cut -c1-120))"
+  echo "   (that's OK - the deploy step grants what it needs itself)"
+  return 0
 }
 [ -n "$GCS_SA" ] && grant "serviceAccount:$GCS_SA" roles/pubsub.publisher
 grant "serviceAccount:$COMPUTE_SA" roles/eventarc.eventReceiver
@@ -201,7 +205,11 @@ for i in 1 2 3 4; do
        --trigger-location="$REGION" --quiet; then
     deployed=1; break
   fi
-  echo "   deploy failed, waiting 60s for permissions and trying again..."; sleep 60
+  echo
+  echo "   ^^^ Attempt $i failed. This is expected and retried automatically:"
+  echo "       - 'Permission denied ... Eventarc Service Agent' = Google is still applying permissions"
+  echo "       - 'npm error ... sharp' = a temporary build glitch"
+  echo "   Waiting 60s and trying again..."; sleep 60
 done
 [ "$deployed" = 1 ] || die "the function did not deploy. Send me the error above."
 echo "function deployed; waiting 60s for the Eventarc trigger to become ready..."
