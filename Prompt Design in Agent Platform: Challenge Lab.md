@@ -294,3 +294,102 @@ LABEOF
 
 
 bash promptdesign_tasks12.sh
+
+
+
+
+3rd task code ------------------------------------------------------------------------------------------------
+
+
+
+```/text
+# TASK 3 - image-analysis.ipynb: paste below "# --- PASTE YOUR CODE BELOW ---"
+# Change file_uri to the image path from Task 1 of the lab (must start with gs://)
+
+from google import genai
+from google.genai import types
+
+def generate():
+  client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+
+  msg1_image1 = types.Part.from_uri(
+      file_uri="gs://YOUR-PROJECT-ID-bucket/cymbal-product-image.png",
+      mime_type="image/png",
+  )
+  msg1_text1 = types.Part.from_text(text="""In less than 10 words, describe this image with the most creative, unusual and unexpected description you can think of, focusing on its colors, textures and the feeling it evokes.""")
+
+  model = "gemini-3.6-flash"
+  contents = [
+    types.Content(
+      role="user",
+      parts=[
+        msg1_image1,
+        msg1_text1
+      ]
+    ),
+  ]
+
+  generate_content_config = types.GenerateContentConfig(
+    temperature = 2,
+    top_p = 0.95,
+    max_output_tokens = 8192,
+  )
+
+  for chunk in client.models.generate_content_stream(
+    model = model,
+    contents = contents,
+    config = generate_content_config,
+    ):
+    if chunk.text:
+      print(chunk.text, end="")
+
+generate()
+```
+
+
+4th task code ---------------------------------------------------------------------------------------------------
+
+```/text
+# TASK 4 - tagline-generator.ipynb: paste below "# --- PASTE YOUR CODE BELOW ---" (nothing to change)
+
+from google import genai
+from google.genai import types
+
+def generate():
+  client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+
+  si_text1 = """Cymbal Direct is partnering with an outdoor gear retailer. They're launching a new line of products designed to encourage young people to explore the outdoors. Help them create catchy taglines for this product line."""
+
+  model = "gemini-3.6-flash"
+  contents = [
+    types.Content(role="user", parts=[types.Part.from_text(text="""input: Write a tagline for a durable backpack designed for hikers that makes them feel prepared. Consider styles like minimalist.""")]),
+    types.Content(role="model", parts=[types.Part.from_text(text="""output: Built for the Journey: Your Adventure Essentials.""")]),
+    types.Content(role="user", parts=[types.Part.from_text(text="""input: Write a tagline for a lightweight tent designed for families that makes them feel connected. Consider styles like playful.""")]),
+    types.Content(role="model", parts=[types.Part.from_text(text="""output: Pitch Together, Dream Together.""")]),
+    types.Content(
+      role="user",
+      parts=[
+        types.Part.from_text(text="""input: Write a tagline for a lightweight, durable product designed for young adventurers that makes them feel empowered.
+The tagline must include the keyword "nature".
+output:""")
+      ]
+    ),
+  ]
+
+  generate_content_config = types.GenerateContentConfig(
+    temperature = 1,
+    top_p = 0.95,
+    max_output_tokens = 8192,
+    system_instruction=[types.Part.from_text(text=si_text1)],
+  )
+
+  for chunk in client.models.generate_content_stream(
+    model = model,
+    contents = contents,
+    config = generate_content_config,
+    ):
+    if chunk.text:
+      print(chunk.text, end="")
+
+generate()
+```
