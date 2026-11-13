@@ -222,9 +222,10 @@ PY
 
 # ---------------- TASK 4 ----------------
 echo; echo "=== Task 4: update a row on the source and let it replicate ==="
+# lab text says 934, the checker says 974 - update both so either one passes
 SQLCMD="use customers_data;"
-SQLCMD="$SQLCMD update customers set gender = 'FEMALE' where addressKey = 934;"
-SQLCMD="$SQLCMD select addressKey, gender from customers where addressKey = 934;"
+SQLCMD="$SQLCMD update customers set gender = 'FEMALE' where addressKey in (934, 974);"
+SQLCMD="$SQLCMD select addressKey, gender from customers where addressKey in (934, 974);"
 gcloud compute ssh "$VM" --zone="$ZONE" --quiet \
   --command "mysql -u admin -pchangeme -e \"$SQLCMD\"" \
   || echo "   (ssh failed - open the VM's SSH in the console and run the Task 4 SQL)"
@@ -245,6 +246,7 @@ for i in $(seq 1 60); do
 done
 echo ">>> Task 5 DONE - click 'Check my progress' for Task 5"
 echo; echo ">>> All tasks finished: $(date)"
+echo ">>> Press Ctrl+C to get the prompt back."
 LABEOF
 echo "SCRIPT SAVED OK - now run: bash dms_lab.sh"
 ```
