@@ -302,4 +302,6 @@ LABEOF
 echo "SCRIPT SAVED OK - now run: bash pgsql_lab.sh"
 ```
 
+pgsql_lab.sh
+
 
