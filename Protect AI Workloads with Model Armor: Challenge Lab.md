@@ -99,7 +99,10 @@ if "error" in call("GET", f"{MA}/templates/{T}"):
         raise SystemExit("STOP: template not created - send Claude the error above")
 else:
     print("   template already exists")
-print(">>> Task 4 DONE - click 'Check my progress' NOW (switching it to advanced SDP in 2 min)")
+print(">>> Task 4 DONE - click 'Check my progress' for 'Create the Model Armor template' NOW")
+print(">>> (this check only passes BEFORE Task 6 changes the template - the script waits for you)")
+print(">>> When Task 4 shows 20/20, press ENTER here to continue ", end="", flush=True)
+open("/dev/tty").readline()   # stdin is the script itself, so read the keyboard directly
 
 # ---------- Task 5: IAM ----------
 print("\n=== Task 5: roles for service agents ===")
@@ -134,7 +137,7 @@ r = call("POST", f"{DLP}/content:deidentify", {
   "item": {"value": "My email is john.doe@example.com and my credit card is 4111 1111 1111 1111."},
   "inspectTemplateName": INSP, "deidentifyTemplateName": DEID})
 print("   redaction test:", r.get("item", {}).get("value", r))
-time.sleep(120)
+time.sleep(120)   # same wait as the run that scored 100
 adv = {"advancedConfig": {"inspectTemplate": INSP, "deidentifyTemplate": DEID}}
 ok = show("template -> advanced SDP", call("PATCH",
   f"{MA}/templates/{T}?updateMask=filterConfig", {"filterConfig": template(adv)["filterConfig"]}))
