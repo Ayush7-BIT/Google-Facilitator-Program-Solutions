@@ -72,7 +72,8 @@ step() { if [ -f $D/$1 ]; then echo; echo "=== $2: already done ==="; return 1
   fi; echo; echo "=== $2 ==="; }
 done_() { touch $D/$1; }
 die() { echo; echo "STOP: $1 - send Claude a screenshot"; exit 1; }
-BKT=gs://$P-bigtable-temp
+# checker: multi-region bucket named exactly <project-id>
+BKT=gs://$P
 TPL=gs://dataflow-templates-$REGION/latest/GCS_SequenceFile_to_Cloud_Bigtable
 
 if step t1 "Task 1: instance $I (Enterprise, SSD, autoscaling 1-5 @60%)"; then
@@ -100,7 +101,7 @@ mk() { gcloud bigtable instances tables describe $1 --instance=$I >/dev/null 2>&
 mk SessionHistory Engagements,Sales
 mk PersonalizedProducts Recommendations
 gcloud storage buckets describe $BKT >/dev/null 2>&1 || \
-  gcloud storage buckets create $BKT --location=$REGION -q
+  gcloud storage buckets create $BKT --location=US -q || die "bucket $BKT failed"
 # the lab's own tip: restart the Dataflow API before the jobs
 gcloud services disable dataflow.googleapis.com --force -q >/dev/null 2>&1
 sleep 10; gcloud services enable dataflow.googleapis.com -q; sleep 20
@@ -142,6 +143,10 @@ if command -v cbt >/dev/null; then
     cbt -project $P -instance $I read $T count=2 2>/dev/null | head -12
   done
 fi
+echo "   Quiz helper - session red3016#1638940844357 (purchased = Sales):"
+cbt -project $P -instance $I lookup SessionHistory "red3016#1638940844357" \
+  2>/dev/null | sed 's/^/     /'
+echo "   Other quiz rows:  cbt -project $P -instance $I lookup <TABLE> <ROW>"
 echo ">>> Task 2 DONE - click 'Check my progress' (Create and populate tables)"
 echo ">>> and the PersonalizedProducts / import-recommendations check"
 done_ t2; fi
