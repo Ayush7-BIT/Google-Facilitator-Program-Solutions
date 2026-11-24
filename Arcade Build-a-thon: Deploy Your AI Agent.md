@@ -480,3 +480,9 @@ B64
 bash arcade_agent.sh
 ```
 
+
+
+
+```/text
+I am a final-year B.Tech Computer Science student. I know Python, Java, JavaScript and SQL. I have built a full-stack web app using React and Spring Boot, deployed projects on Google Cloud (Cloud Run, BigQuery, Vertex AI), and completed 50+ Google Cloud labs. I run a tech YouTube channel with 26k subscribers where I teach cloud and coding. Looking for a software engineer or cloud engineer role.
+```
